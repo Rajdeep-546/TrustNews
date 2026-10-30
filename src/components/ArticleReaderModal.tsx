@@ -205,6 +205,17 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
     `Domain & Strategic Impact: Developments in ${article.category} categorized under ${article.sourceTier}. Clickbait linguistic penalty evaluated at ${(article.clickbaitIndex * 100).toFixed(0)}%.`
   ];
 
+  // Contextual topic keywords derived from article
+  const topicTags = [
+    article.category,
+    ...(article.subcategory ? [article.subcategory.replace(' Wire', '')] : []),
+    ...(article.title
+      .replace(/[^a-zA-Z0-9\s]/g, '')
+      .split(/\s+/)
+      .filter((w) => w.length > 5 && !['Beyond', 'Before', 'During', 'Across', 'Report', 'Market', 'Public', 'Global', 'Future', 'Second', 'Models'].includes(w))
+      .slice(0, 3)),
+  ].filter((v, i, a) => a.indexOf(v) === i).slice(0, 5);
+
   const textClass = textSize === 'xlarge'
     ? 'text-lg sm:text-xl leading-relaxed'
     : textSize === 'large'
@@ -360,27 +371,120 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
             </div>
           )}
 
-          {/* Headline & Metadata */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 flex-wrap text-xs text-neutral-400 font-mono">
-              <span className="text-cyan-400 font-bold">Rank #{article.computedScores.rank}</span>
-              <span>·</span>
-              <span>Overall Score: {article.computedScores.finalRankScore.toFixed(3)}</span>
-              <span>·</span>
-              <span>Corroborated by {article.corroborationCount} independent wires</span>
+          {/* Enhanced Headline & Comprehensive Intelligence Section */}
+          <div className="space-y-4">
+            {/* Top Category, Source Tier & Corroboration Badges */}
+            <div className="flex items-center gap-2 flex-wrap text-xs font-mono">
+              <span className="px-2.5 py-1 rounded-md bg-neutral-900 border border-neutral-750 text-cyan-300 font-semibold flex items-center gap-1.5 shadow-xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                {article.category}
+              </span>
+
+              {article.subcategory && (
+                <span className="px-2 py-1 rounded-md bg-neutral-900/80 border border-neutral-800 text-neutral-300">
+                  {article.subcategory}
+                </span>
+              )}
+
+              <span className="px-2 py-1 rounded-md bg-emerald-950/60 border border-emerald-800/50 text-emerald-300 font-semibold flex items-center gap-1 shadow-xs">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                {Math.round(article.sourceReliability * 100)}% Trust · {article.sourceTier ? article.sourceTier.split('(')[0].trim() : 'Tier 1'}
+              </span>
+
+              <span className="text-neutral-400 hidden sm:inline-flex items-center gap-1">
+                <span className="text-cyan-400 font-bold">Rank #{article.computedScores.rank}</span>
+                <span>·</span>
+                <span>Pareto Score: {article.computedScores.finalRankScore.toFixed(3)}</span>
+                <span>·</span>
+                <span>{article.corroborationCount} Independent Wires</span>
+              </span>
             </div>
 
+            {/* Main Headline */}
             <h1 className={`font-extrabold text-white tracking-tight leading-snug ${
               textSize === 'xlarge' ? 'text-2xl sm:text-3xl' : textSize === 'large' ? 'text-xl sm:text-2xl' : 'text-lg sm:text-xl'
             }`}>
               {article.title}
             </h1>
 
-            {article.author && (
-              <p className="text-xs text-neutral-400 font-mono">
-                By <span className="text-neutral-200 font-semibold">{article.author}</span> · Published via {article.publisher}
-              </p>
-            )}
+            {/* Rich Editorial Byline & Provenance Information Card */}
+            <div className="p-4 rounded-2xl bg-neutral-900/70 border border-neutral-800 space-y-3">
+              {/* Row 1: Author, Publisher, Read Time & External Link */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  {/* Author Avatar / Initial */}
+                  <div className="w-8 h-8 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center font-bold text-xs text-cyan-300 shrink-0">
+                    {article.author ? article.author.replace(/^(Dr\.|Prof\.)\s*/, '')[0].toUpperCase() : 'W'}
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-semibold text-white">
+                        {article.author || 'Investigative Newsroom Wire'}
+                      </span>
+                      <span className="text-neutral-500 font-mono text-[11px]">·</span>
+                      <span className="text-neutral-300 font-mono text-[11px] flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        {article.publisher}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px] text-neutral-400 font-mono mt-0.5 flex-wrap">
+                      <span>{article.publishedHoursAgo}h ago</span>
+                      <span>·</span>
+                      <span>~{Math.max(1, Math.round(article.wordCount / 220))} min read ({article.wordCount} words)</span>
+                      <span>·</span>
+                      <span className="text-emerald-400">Objective Phrasing ({Math.round((1 - article.clickbaitIndex) * 100)}% neutral)</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* External link to original article if URL exists */}
+                {article.url && (
+                  <a
+                    href={article.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-750 text-neutral-200 hover:text-white border border-neutral-700 text-xs font-medium transition-colors shrink-0 shadow-xs cursor-pointer"
+                  >
+                    <span>Original Source</span>
+                    <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
+                  </a>
+                )}
+              </div>
+
+              {/* Row 2: Objective Heuristic Quick Pill Strip */}
+              <div className="pt-2 border-t border-neutral-800/80 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
+                <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-neutral-950/70 border border-neutral-850">
+                  <span className="text-neutral-400">Factual Trust:</span>
+                  <span className="font-bold text-emerald-400">{Math.round(article.sourceReliability * 100)}%</span>
+                </div>
+                <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-neutral-950/70 border border-neutral-850">
+                  <span className="text-neutral-400">Relevance:</span>
+                  <span className="font-bold text-cyan-400">{Math.round(article.computedScores.relevance * 100)}%</span>
+                </div>
+                <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-neutral-950/70 border border-neutral-850">
+                  <span className="text-neutral-400">Corroborated:</span>
+                  <span className="font-bold text-neutral-200">{article.corroborationCount} Wires</span>
+                </div>
+                <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-neutral-950/70 border border-neutral-850">
+                  <span className="text-neutral-400">Target Dwell:</span>
+                  <span className="font-bold text-neutral-200">{article.expectedReadTimeSec}s</span>
+                </div>
+              </div>
+
+              {/* Row 3: Contextual Topic Keywords */}
+              <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                <span className="text-[10px] font-mono uppercase text-neutral-500 font-semibold">Keywords:</span>
+                {topicTags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-neutral-950/80 text-neutral-300 border border-neutral-800"
+                  >
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* 60-Second Executive Summary Box */}

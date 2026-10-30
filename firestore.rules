@@ -28,6 +28,11 @@ service cloud.firestore {
       return resource.data;
     }
 
+    // Connection Healthcheck Document (Used by testConnection())
+    match /test/connection {
+      allow get: if true;
+    }
+
     // User Profile - Anyone can view a public profile via unique userId
     match /users/{userId} {
       allow get: if isValidId(userId);

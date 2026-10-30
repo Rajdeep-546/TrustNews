@@ -71,9 +71,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-
-  // If the client is temporarily offline or token service is unavailable, do not throw fatal crash
+  // If the client is temporarily offline or token service is initializing, handle gracefully in degraded/offline mode
   if (
     errMsg.toLowerCase().includes('client is offline') ||
     errMsg.toLowerCase().includes('token-service') ||
@@ -84,6 +82,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     return;
   }
 
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
 

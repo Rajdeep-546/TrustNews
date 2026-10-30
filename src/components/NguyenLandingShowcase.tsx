@@ -29,6 +29,7 @@ import HaloReelDemo from './HaloReelDemo';
 import { ProductCardHero } from '@/registry/ruixenui/product-card-hero';
 import CloudBackground from '@/registry/ruixenui/cloud-background';
 import { ParticleTextDots } from '@/registry/ruixenui/particle-text-dots';
+import { LazyScrollReveal } from './LazyScrollReveal';
 
 interface NguyenLandingShowcaseProps {
   onNavigateTab: (tab: ActiveTab, category?: string) => void;
@@ -289,7 +290,8 @@ export const NguyenLandingShowcase: React.FC<NguyenLandingShowcaseProps> = ({ on
       </section>
 
       {/* Feature Bento Grid ("Everything your team needs...") */}
-      <section className="max-w-6xl mx-auto px-4 py-16 border-t border-neutral-850">
+      <LazyScrollReveal animation="fade-up" durationMs={650}>
+        <section className="max-w-6xl mx-auto px-4 py-16 border-t border-neutral-850">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
           <div className="max-w-xl">
             <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white mb-3">
@@ -489,7 +491,7 @@ export const NguyenLandingShowcase: React.FC<NguyenLandingShowcaseProps> = ({ on
               <div className="space-y-3 font-mono text-xs">
                 <div>
                   <div className="flex justify-between text-neutral-300 mb-1">
-                    <span className="font-semibold text-white">TrustNews·MOO</span>
+                    <span className="font-semibold text-white">TrustNews</span>
                     <span className="text-emerald-400 font-bold">
                       {activeBenchmarkMetric === 'credibility' ? '96.4%' : activeBenchmarkMetric === 'ndcg' ? '0.842' : '0.810'}
                     </span>
@@ -637,58 +639,62 @@ export const NguyenLandingShowcase: React.FC<NguyenLandingShowcaseProps> = ({ on
           </div>
         </div>
       </section>
+    </LazyScrollReveal>
 
       {/* Social Wire & Personalized Profile Feature Cards */}
-      <section className="max-w-6xl mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="rounded-2xl border border-sky-500/30 bg-gradient-to-br from-neutral-950 to-sky-950/20 p-6 flex flex-col justify-between shadow-xl">
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-sky-500/20 text-sky-400 border border-sky-500/30">
-                  x.com Style Feed
-                </span>
-                <span className="text-xs text-neutral-400 font-mono">Real-Time Community</span>
+      <LazyScrollReveal animation="fade-up" durationMs={650}>
+        <section className="max-w-6xl mx-auto px-4 py-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="rounded-2xl border border-sky-500/30 bg-gradient-to-br from-neutral-950 to-sky-950/20 p-6 flex flex-col justify-between shadow-xl">
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-sky-500/20 text-sky-400 border border-sky-500/30">
+                    x.com Style Feed
+                  </span>
+                  <span className="text-xs text-neutral-400 font-mono">Real-Time Community</span>
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">Live News Social Wire</h3>
+                <p className="text-xs text-neutral-300 leading-relaxed">
+                  Broadcast analytical dispatches, repost breaking news with peer commentary, like insights, and engage in thread discussions with fellow analysts.
+                </p>
               </div>
-              <h3 className="text-xl font-bold text-white mb-2">Live News Social Wire</h3>
-              <p className="text-xs text-neutral-300 leading-relaxed">
-                Broadcast analytical dispatches, repost breaking news with peer commentary, like insights, and engage in thread discussions with fellow analysts.
-              </p>
+              <button
+                onClick={() => onNavigateTab('wire')}
+                className="mt-6 px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-md self-start"
+              >
+                <span>Explore Social Wire</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
             </div>
-            <button
-              onClick={() => onNavigateTab('wire')}
-              className="mt-6 px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-md self-start"
-            >
-              <span>Explore Social Wire</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
 
-          <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-br from-neutral-950 to-amber-950/20 p-6 flex flex-col justify-between shadow-xl">
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                  Firestore Persisted
-                </span>
-                <span className="text-xs text-neutral-400 font-mono">Personalized Model</span>
+            <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-br from-neutral-950 to-amber-950/20 p-6 flex flex-col justify-between shadow-xl">
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    Firestore Persisted
+                  </span>
+                  <span className="text-xs text-neutral-400 font-mono">Personalized Model</span>
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">Analyst Preferences &amp; Profile</h3>
+                <p className="text-xs text-neutral-300 leading-relaxed">
+                  Customize your multi-objective ranking sliders (&gamma; credibility, &beta; dwell, &delta; diversity), store bookmarks, track reposts, and share your unique public profile UID with anyone.
+                </p>
               </div>
-              <h3 className="text-xl font-bold text-white mb-2">Analyst Preferences &amp; Profile</h3>
-              <p className="text-xs text-neutral-300 leading-relaxed">
-                Customize your multi-objective ranking sliders (&gamma; credibility, &beta; dwell, &delta; diversity), store bookmarks, track reposts, and share your unique public profile UID with anyone.
-              </p>
+              <button
+                onClick={() => onNavigateTab('profile')}
+                className="mt-6 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-md self-start"
+              >
+                <span>Open My Dashboard</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
             </div>
-            <button
-              onClick={() => onNavigateTab('profile')}
-              className="mt-6 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-md self-start"
-            >
-              <span>Open My Dashboard</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
           </div>
-        </div>
-      </section>
+        </section>
+      </LazyScrollReveal>
 
       {/* 3D Orbiting Halo Reel - Verified Categories & Multi-Objective Modules */}
-      <section className="relative isolate z-10 max-w-6xl mx-auto px-4 py-16 border-t border-neutral-850">
+      <LazyScrollReveal animation="fade-up" durationMs={650}>
+        <section className="relative isolate z-10 max-w-6xl mx-auto px-4 py-16 border-t border-neutral-850">
         <div className="text-center max-w-2xl mx-auto mb-6">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-neutral-900 border border-neutral-800 text-xs font-mono text-neutral-300 mb-3 shadow-xs">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -704,6 +710,7 @@ export const NguyenLandingShowcase: React.FC<NguyenLandingShowcaseProps> = ({ on
 
         <HaloReelDemo onNavigateTab={onNavigateTab} />
       </section>
+    </LazyScrollReveal>
 
       {/* Deep Dives ("Feature Highlights") */}
       <section className="max-w-6xl mx-auto px-4 py-16 border-t border-neutral-850">
@@ -909,7 +916,7 @@ export const NguyenLandingShowcase: React.FC<NguyenLandingShowcaseProps> = ({ on
               Empirical Evaluation & Statistical Significance
             </h2>
             <p className="text-sm text-neutral-400 leading-relaxed">
-              Rigorous offline experimental results comparing TrustNews·MOO against 7 baseline models across ranking quality, dwell retention, verifiable source trust, and exposure fairness.
+              Rigorous offline experimental results comparing TrustNews against 7 baseline models across ranking quality, dwell retention, verifiable source trust, and exposure fairness.
             </p>
           </div>
 
@@ -1117,7 +1124,7 @@ export const NguyenLandingShowcase: React.FC<NguyenLandingShowcaseProps> = ({ on
         <div className="space-y-3">
           {[
             {
-              q: 'How does TrustNews·MOO differ from traditional click-based recommenders?',
+              q: 'How does TrustNews differ from traditional click-based recommenders?',
               a: 'Conventional systems train single-objective machine learning models to maximize Click-Through Rate (CTR), often promoting sensational, low-dwell clickbait. TrustNews balances 5 distinct objectives simultaneously: predicted relevance, sustained dwell time, source credibility, topic diversity, and freshness using Pareto scalarization.'
             },
             {

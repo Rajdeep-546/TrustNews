@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ShieldCheck, CheckCircle2, Lock, Database, AlertCircle, Sparkles } from 'lucide-react';
+import { X, ShieldCheck, CheckCircle2, Lock, Database, AlertCircle, Box } from 'lucide-react';
 import { useFirebase } from '../context/FirebaseContext';
 
 interface AuthModalProps {
@@ -45,19 +45,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* Header */}
         <div className="flex items-center gap-3 mb-5">
           <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-black font-black text-lg shadow-sm">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="w-5 h-5 text-black"
-            >
-              <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2" />
-              <line x1="12" y1="22" x2="12" y2="15.5" />
-              <polyline points="22 8.5 12 15.5 2 8.5" />
-            </svg>
+            <Box className="w-5 h-5 text-black" strokeWidth={2.5} />
           </div>
           <div>
             <h3 className="text-lg font-bold text-white tracking-tight">Real Firebase Authentication</h3>
@@ -186,3 +174,5 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     </div>
   );
 };
+
+export default AuthModal;

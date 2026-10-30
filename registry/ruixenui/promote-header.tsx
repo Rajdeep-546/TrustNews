@@ -22,7 +22,7 @@ export interface PromoteHeaderProps {
 export const PromoteHeader: React.FC<PromoteHeaderProps> = ({
   badge = "NEW v2.4",
   badgeVariant = "glow",
-  title = "TrustNews·MOO Engine:",
+  title = "TrustNews Engine:",
   highlightText = "Multi-Objective Pareto Optimization & Verifiable Fact-Checking",
   actionText = "Explore Pareto Frontier",
   actionHref,

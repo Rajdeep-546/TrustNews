@@ -1083,6 +1083,33 @@ function generateSupplementarySet(
 
     items.push(assessNewsItem(rawMock, base.category, itemIndex + seedMultiplier));
   }
+
+  // If count needed is still not met from specific category, supplement from general pool so every category has multiple pages
+  if (items.length < countNeeded && category !== 'all') {
+    for (let i = 0; i < EXPANDED_NEWS_POOL.length && items.length < countNeeded; i++) {
+      const base = EXPANDED_NEWS_POOL[i];
+      const norm = normalizeTitleForDedup(base.title);
+      if (localSeen.has(norm)) continue;
+      localSeen.add(norm);
+
+      const itemIndex = items.length + 1;
+      const hoursAgo = Math.max(1, Math.min(36, ((itemIndex * 3 + seedMultiplier) % 36) + 1));
+      const rawMock = {
+        title: base.title,
+        description: base.abstract,
+        content: `${base.abstract} Detailed field analysis corroborates sustained operational metrics across key test regions. Regional delegates and peer-reviewers confirmed the integrity of datasets recorded over consecutive evaluation intervals.`,
+        url: `${base.url}?v=${seedMultiplier}&id=${itemIndex}`,
+        urlToImage: resolveArticleImage(base.title, base.category, itemIndex),
+        publishedAt: new Date(Date.now() - hoursAgo * 3600 * 1000).toISOString(),
+        source: { name: base.publisher },
+        author: base.author,
+        category: base.category,
+      };
+
+      items.push(assessNewsItem(rawMock, base.category, itemIndex + seedMultiplier));
+    }
+  }
+
   return items;
 }
 

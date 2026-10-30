@@ -22,6 +22,8 @@ import { UniversalSearchModal } from './components/UniversalSearchModal';
 import { SocialWireFeed } from './components/SocialWireFeed';
 import { UserProfileDashboard } from './components/UserProfileDashboard';
 
+import { ScrollToTopButton } from './components/ScrollToTopButton';
+import { Box } from 'lucide-react';
 import PromoteHeader from './ruixenui/promote-header';
 import { RuixenGradientFooter } from '@/registry/ruixenui/ruixen-gradient-footer';
 
@@ -465,23 +467,11 @@ function MainApp() {
           {/* Brand Info */}
           <div className="md:col-span-2">
             <div className="flex items-center gap-2.5 mb-3">
-              <div className="w-6 h-6 rounded-md bg-white flex items-center justify-center text-black font-black text-xs">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="w-3.5 h-3.5 text-black"
-                >
-                  <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2" />
-                  <line x1="12" y1="22" x2="12" y2="15.5" />
-                  <polyline points="22 8.5 12 15.5 2 8.5" />
-                </svg>
+              <div className="w-6 h-6 rounded-md bg-white flex items-center justify-center text-black font-black text-xs shadow-xs">
+                <Box className="w-3.5 h-3.5 text-black" strokeWidth={2.5} />
               </div>
-              <span className="text-sm font-extrabold text-white tracking-tight flex items-center gap-1.5">
-                TrustNews <span className="text-xs px-1.5 py-0.5 rounded font-mono font-medium bg-neutral-900 border border-neutral-700 text-cyan-400">MOO</span>
+              <span className="text-sm font-extrabold text-white tracking-tight flex items-center">
+                TrustNews
               </span>
             </div>
             <p className="text-xs text-neutral-400 leading-relaxed max-w-sm mb-4">
@@ -604,6 +594,9 @@ function MainApp() {
           </div>
         </div>
       </RuixenGradientFooter>
+
+      {/* Floating Transparent Scroll-to-Top Button */}
+      <ScrollToTopButton />
     </div>
   );
 }

@@ -16,6 +16,8 @@ import { calculatePersonaParetoWeights } from '../algorithms/multiObjectiveOptim
 import { ArticleReaderModal } from './ArticleReaderModal';
 import { ExplainabilityDrawer } from './ExplainabilityDrawer';
 import { useFirebase } from '../context/FirebaseContext';
+import { LazyScrollReveal } from './LazyScrollReveal';
+import { LazyImage } from './LazyImage';
 
 interface LiveFeedViewProps {
   articles: NewsArticle[];
@@ -181,7 +183,8 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [pageSize, setPageSize] = useState<number>(9);
+  const [pageSize, setPageSize] = useState<number>(6);
+  const [pageJumpInput, setPageJumpInput] = useState<string>('');
   const feedContainerRef = useRef<HTMLDivElement>(null);
 
   // Sync category filter if prop changes
@@ -841,30 +844,35 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
               const cardImage = pageImageMap.get(article.id) || getArticleDisplayImage(article, startIndex + idx);
 
               return (
-                <article
+                <LazyScrollReveal
                   key={`${article.id}-${article.title}`}
-                  onClick={() => setSelectedArticleForRead(article)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      setSelectedArticleForRead(article);
-                    }
-                  }}
-                  className="group relative rounded-2xl border border-neutral-850/80 bg-neutral-900/40 hover:bg-neutral-900/80 hover:border-neutral-700 transition-all duration-300 flex flex-col justify-between overflow-hidden cursor-pointer shadow-sm hover:shadow-xl hover:-translate-y-0.5 text-left"
+                  delayMs={(idx % 3) * 70}
+                  animation="fade-up"
+                  durationMs={550}
+                  className="h-full"
                 >
-                  {/* Thumbnail Image Header */}
-                  <div className="relative w-full h-48 overflow-hidden bg-neutral-950">
-                    <img
-                      src={cardImage}
-                      alt={article.title}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      onError={(e) => {
-                        e.currentTarget.src = getFallbackImage(article.category, startIndex + idx);
-                      }}
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/20 to-transparent" />
+                  <article
+                    onClick={() => setSelectedArticleForRead(article)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedArticleForRead(article);
+                      }
+                    }}
+                    className="group relative rounded-2xl border border-neutral-850/80 bg-neutral-900/40 hover:bg-neutral-900/80 hover:border-neutral-700 transition-all duration-300 flex flex-col justify-between overflow-hidden cursor-pointer shadow-sm hover:shadow-xl hover:-translate-y-0.5 text-left h-full"
+                  >
+                    {/* Thumbnail Image Header */}
+                    <div className="relative w-full h-48 overflow-hidden bg-neutral-950">
+                      <LazyImage
+                        src={cardImage}
+                        alt={article.title}
+                        fallbackSrc={getFallbackImage(article.category, startIndex + idx)}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        containerClassName="w-full h-full"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/20 to-transparent" />
 
                     {/* Corner Badges: Category & Trust Pill */}
                     <div className="absolute top-3 inset-x-3 flex items-center justify-between gap-2 pointer-events-none">
@@ -969,7 +977,8 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
                     </div>
                   </div>
                 </article>
-              );
+              </LazyScrollReveal>
+            );
             })}
           </div>
         ) : (
@@ -982,32 +991,36 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
               const listImage = pageImageMap.get(article.id) || getArticleDisplayImage(article, startIndex + idx);
 
               return (
-                <article
+                <LazyScrollReveal
                   key={`${article.id}-${article.title}`}
-                  onClick={() => setSelectedArticleForRead(article)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      setSelectedArticleForRead(article);
-                    }
-                  }}
-                  className="group p-4 sm:p-5 rounded-2xl border border-neutral-850/80 bg-neutral-900/40 hover:bg-neutral-900/80 hover:border-neutral-700 transition-all cursor-pointer shadow-sm text-left"
+                  delayMs={(idx % 5) * 50}
+                  animation="fade-up"
+                  durationMs={500}
                 >
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="flex items-start gap-4 flex-1 min-w-0">
-                      {/* Thumbnail Image */}
-                      <div className="w-24 h-24 sm:w-28 sm:h-24 rounded-xl overflow-hidden border border-neutral-800 bg-neutral-950 shrink-0 hidden sm:block">
-                        <img
-                          src={listImage}
-                          alt=""
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                          onError={(e) => {
-                            e.currentTarget.src = getFallbackImage(article.category, startIndex + idx);
-                          }}
-                        />
-                      </div>
+                  <article
+                    onClick={() => setSelectedArticleForRead(article)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedArticleForRead(article);
+                      }
+                    }}
+                    className="group p-4 sm:p-5 rounded-2xl border border-neutral-850/80 bg-neutral-900/40 hover:bg-neutral-900/80 hover:border-neutral-700 transition-all cursor-pointer shadow-sm text-left"
+                  >
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="flex items-start gap-4 flex-1 min-w-0">
+                        {/* Thumbnail Image */}
+                        <div className="w-24 h-24 sm:w-28 sm:h-24 rounded-xl overflow-hidden border border-neutral-800 bg-neutral-950 shrink-0 hidden sm:block">
+                          <LazyImage
+                            src={listImage}
+                            alt=""
+                            fallbackSrc={getFallbackImage(article.category, startIndex + idx)}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            containerClassName="w-full h-full"
+                          />
+                        </div>
 
                       {/* Content */}
                       <div className="space-y-1.5 flex-1 min-w-0">
@@ -1079,7 +1092,8 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
                     </div>
                   </div>
                 </article>
-              );
+              </LazyScrollReveal>
+            );
             })}
           </div>
         )}
@@ -1152,9 +1166,9 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
               <div className="flex items-center gap-1">
                 {Array.from({ length: totalPages }, (_, i) => i + 1)
                   .filter((p) => {
-                    if (totalPages <= 7) return true;
+                    if (totalPages <= 9) return true;
                     if (p === 1 || p === totalPages) return true;
-                    if (Math.abs(p - safeCurrentPage) <= 1) return true;
+                    if (Math.abs(p - safeCurrentPage) <= 2) return true;
                     return false;
                   })
                   .map((p, idx, arr) => {
@@ -1209,6 +1223,45 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
               >
                 <ChevronsRight className="w-3.5 h-3.5" />
               </button>
+
+              {/* Direct Page Jump Input */}
+              {totalPages > 3 && (
+                <div className="hidden sm:flex items-center gap-1.5 ml-2 pl-2 border-l border-neutral-800">
+                  <span className="text-[11px] text-neutral-500 font-mono">Go to:</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={totalPages}
+                    value={pageJumpInput}
+                    onChange={(e) => setPageJumpInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const p = parseInt(pageJumpInput, 10);
+                        if (!isNaN(p) && p >= 1 && p <= totalPages) {
+                          setCurrentPage(p);
+                          setPageJumpInput('');
+                          feedContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                      }
+                    }}
+                    placeholder={String(safeCurrentPage)}
+                    className="w-12 px-1.5 py-1 bg-neutral-900 border border-neutral-800 rounded-lg text-white font-mono text-xs focus:outline-none focus:border-cyan-500 text-center"
+                  />
+                  <button
+                    onClick={() => {
+                      const p = parseInt(pageJumpInput, 10);
+                      if (!isNaN(p) && p >= 1 && p <= totalPages) {
+                        setCurrentPage(p);
+                        setPageJumpInput('');
+                        feedContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                    }}
+                    className="px-2 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-800 text-xs font-semibold cursor-pointer"
+                  >
+                    Go
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
