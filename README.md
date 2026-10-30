@@ -1,4 +1,4 @@
-# TrustNews-MOO 📰⚖️
+# TrustNews📰⚖️
 > **Trust-Aware Multi-Objective Optimization & Editorial News Recommendation Framework**
 
 TrustNews-MOO is a state-of-the-art news ranking and reading platform that addresses algorithmic filter bubbles, sensationalist clickbait, and publisher monopolies. By synthesizing **Multi-Objective Optimization (MOO)**, **Source Credibility Evaluation**, **Topical Diversity**, and **Fair Exposure Calibration**, TrustNews-MOO delivers a personalized news feed that prioritizes truth and breadth without sacrificing user relevance.
