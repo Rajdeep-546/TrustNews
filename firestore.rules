@@ -1,0 +1,75 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Default-Deny Catch-All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Global Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // User Profile - Anyone can view a public profile via unique userId
+    match /users/{userId} {
+      allow get: if isValidId(userId);
+      allow list: if false; // Disallow bulk scraping
+      allow create: if isOwner(userId) && isValidId(userId);
+      allow update: if isOwner(userId) && isValidId(userId);
+      allow delete: if isOwner(userId) && isValidId(userId);
+
+      // Saved Articles Subcollection
+      match /saved_articles/{articleId} {
+        allow get, list: if isValidId(userId);
+        allow create, update, delete: if isOwner(userId) && isValidId(articleId);
+      }
+
+      // Reading Sessions Subcollection
+      match /reading_sessions/{sessionId} {
+        allow get, list: if isOwner(userId);
+        allow create, update, delete: if isOwner(userId) && isValidId(sessionId);
+      }
+
+      // Fact-Check Audits Subcollection
+      match /audits/{auditId} {
+        allow get, list: if isOwner(userId);
+        allow create, update, delete: if isOwner(userId) && isValidId(auditId);
+      }
+    }
+
+    // Social Wire Posts (x.com style news dispatches & reposts)
+    match /posts/{postId} {
+      allow get, list: if true;
+      allow create: if isSignedIn() && isValidId(postId) && incoming().authorId == request.auth.uid;
+      // Allow authenticated users to like/comment count increment, or author to edit
+      allow update: if isSignedIn() && isValidId(postId);
+      allow delete: if isSignedIn() && isValidId(postId) && existing().authorId == request.auth.uid;
+    }
+
+    // Discussion Comments (on news articles or wire posts)
+    match /comments/{commentId} {
+      allow get, list: if true;
+      allow create: if isSignedIn() && isValidId(commentId) && incoming().authorId == request.auth.uid;
+      allow update: if isSignedIn() && isValidId(commentId) && existing().authorId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(commentId) && existing().authorId == request.auth.uid;
+    }
+  }
+}

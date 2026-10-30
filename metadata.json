@@ -1,0 +1,8 @@
+{
+  "name": "Remix TrustNews-MOO",
+  "description": "Advanced Multi-Objective Evaluation and Trust-Aware Ranking Framework for Personalized News Recommendation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

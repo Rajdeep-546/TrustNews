@@ -1,0 +1,144 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile, public handle, bio, and personalized multi-objective ranking preferences",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth user identifier" },
+        "displayName": { "type": "string", "maxLength": 100 },
+        "handle": { "type": "string", "maxLength": 50 },
+        "bio": { "type": "string", "maxLength": 500 },
+        "photoURL": { "type": "string", "maxLength": 1000 },
+        "email": { "type": "string", "format": "email", "maxLength": 150 },
+        "selectedPersonaId": { "type": "string", "maxLength": 64 },
+        "customWeights": { "type": "object", "description": "Custom multi-objective weights" },
+        "preferredCategories": { "type": "array", "items": { "type": "string" } },
+        "readingWpm": { "type": "number" },
+        "defaultRegion": { "type": "string", "maxLength": 10 },
+        "savedCount": { "type": "number" },
+        "repostsCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName"]
+    },
+    "SavedArticle": {
+      "title": "SavedArticle",
+      "description": "Bookmarked news article saved directly to user's profile with personal notes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "articleId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 400 },
+        "publisher": { "type": "string", "maxLength": 150 },
+        "category": { "type": "string", "maxLength": 100 },
+        "url": { "type": "string", "maxLength": 1000 },
+        "urlToImage": { "type": "string", "maxLength": 1000 },
+        "credibilityScore": { "type": "number" },
+        "userNotes": { "type": "string", "maxLength": 1000 },
+        "savedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "articleId", "userId", "title", "publisher", "savedAt"]
+    },
+    "SocialPost": {
+      "title": "SocialPost",
+      "description": "x.com-style public news wire dispatch or commentary repost",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "authorHandle": { "type": "string", "maxLength": 50 },
+        "authorPhoto": { "type": "string", "maxLength": 1000 },
+        "content": { "type": "string", "maxLength": 2000 },
+        "type": { "type": "string", "enum": ["post", "repost"] },
+        "referencedArticle": { "type": "object" },
+        "likesCount": { "type": "number" },
+        "likedBy": { "type": "array", "items": { "type": "string" } },
+        "commentsCount": { "type": "number" },
+        "repostsCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "authorId", "authorName", "content", "type", "createdAt"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "Public discussion comments on a news article or wire post",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "targetType": { "type": "string", "enum": ["article", "post"] },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "authorHandle": { "type": "string", "maxLength": 50 },
+        "authorPhoto": { "type": "string", "maxLength": 1000 },
+        "content": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "targetType", "targetId", "authorId", "authorName", "content", "createdAt"]
+    },
+    "ReadingSession": {
+      "title": "ReadingSession",
+      "description": "Historical dwell time and reading completion records logged by user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "articleId": { "type": "string", "maxLength": 64 },
+        "articleTitle": { "type": "string", "maxLength": 300 },
+        "publisher": { "type": "string", "maxLength": 150 },
+        "dwellTimeSec": { "type": "number" },
+        "completionRatio": { "type": "number" },
+        "userFeedback": { "type": "string", "enum": ["positive", "negative", "flagged", "none"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "articleId", "dwellTimeSec", "completionRatio"]
+    },
+    "FactCheckAudit": {
+      "title": "FactCheckAudit",
+      "description": "Persisted AI fact-checking and credibility audit assessments",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 300 },
+        "publisher": { "type": "string", "maxLength": 150 },
+        "sourceTier": { "type": "string", "maxLength": 100 },
+        "credibilityScore": { "type": "number" },
+        "factCheckStatus": { "type": "string", "enum": ["VERIFIED", "UNVERIFIED_DEVELOPING", "DISPUTED_SENSATIONAL"] },
+        "reasoning": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "title", "publisher", "credibilityScore", "factCheckStatus"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Public user profile and ranking weight configurations"
+    },
+    "/users/{userId}/saved_articles/{articleId}": {
+      "schema": { "$ref": "#/entities/SavedArticle" },
+      "description": "Saved articles and bookmarks on the user's profile"
+    },
+    "/users/{userId}/reading_sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/ReadingSession" },
+      "description": "Subcollection of reading sessions and dwell interactions for a user"
+    },
+    "/users/{userId}/audits/{auditId}": {
+      "schema": { "$ref": "#/entities/FactCheckAudit" },
+      "description": "Subcollection of saved credibility and fact-checking audit reports"
+    },
+    "/posts/{postId}": {
+      "schema": { "$ref": "#/entities/SocialPost" },
+      "description": "Global x.com-style news wire feed with commentary and reposts"
+    },
+    "/comments/{commentId}": {
+      "schema": { "$ref": "#/entities/Comment" },
+      "description": "Discussion comments on news articles or social wire posts"
+    }
+  }
+}
