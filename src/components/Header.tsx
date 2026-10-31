@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserPersona } from '../types';
+import { UserPersona, UserNotification } from '../types';
 import { useFirebase } from '../context/FirebaseContext';
 import { NavbarFloating, ActiveTab } from '@/registry/ruixenui/navbar-floating';
 import { AuthModal } from './AuthModal';
@@ -13,6 +13,9 @@ export interface HeaderProps {
   personas?: UserPersona[];
   onSelectPersona?: (persona: UserPersona) => void;
   onOpenSearch?: () => void;
+  onOpenMessages?: () => void;
+  onOpenNotifications?: () => void;
+  onSelectNotification?: (notification: UserNotification) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -22,9 +25,17 @@ export const Header: React.FC<HeaderProps> = ({
   personas = [],
   onSelectPersona,
   onOpenSearch,
+  onOpenMessages,
+  onOpenNotifications,
+  onSelectNotification,
 }) => {
-  const { currentUser, signIn, signOutUser, savedAudits } = useFirebase();
+  const { currentUser, signIn, signOutUser, savedAudits, notifications, privateMessages } = useFirebase();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+  const unreadNotificationsCount = notifications.filter((n) => !n.read).length;
+  const unreadMessagesCount = currentUser
+    ? privateMessages.filter((m) => m.recipientId === currentUser.uid && !m.read).length
+    : 0;
 
   // Global keyboard shortcut for search (⌘K or Ctrl+K)
   useEffect(() => {
@@ -59,6 +70,11 @@ export const Header: React.FC<HeaderProps> = ({
         onSignUp={() => signIn()}
         onSignOut={signOutUser}
         savedAuditsCount={savedAudits?.length || 0}
+        unreadNotificationsCount={unreadNotificationsCount}
+        unreadMessagesCount={unreadMessagesCount}
+        onOpenMessages={onOpenMessages}
+        onOpenNotifications={onOpenNotifications}
+        onSelectNotification={onSelectNotification}
         githubUrl={import.meta.env.VITE_GITHUB_REPO_URL || "https://github.com/rajdeepbaruah/trustnews-moo"}
       />
 

@@ -113,6 +113,48 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "userId", "title", "publisher", "credibilityScore", "factCheckStatus"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Real-time user notification triggered when another user comments on a post, likes a post, or sends a private message",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "recipientId": { "type": "string", "maxLength": 128 },
+        "senderId": { "type": "string", "maxLength": 128 },
+        "senderName": { "type": "string", "maxLength": 100 },
+        "senderHandle": { "type": "string", "maxLength": 50 },
+        "senderPhoto": { "type": "string", "maxLength": 1000 },
+        "type": { "type": "string", "enum": ["comment", "message", "like"] },
+        "title": { "type": "string", "maxLength": 200 },
+        "content": { "type": "string", "maxLength": 500 },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "recipientId", "senderId", "senderName", "type", "content", "read", "createdAt"]
+    },
+    "PrivateMessage": {
+      "title": "PrivateMessage",
+      "description": "Private 1-on-1 message visible strictly to sender and recipient",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "conversationId": { "type": "string", "maxLength": 256 },
+        "senderId": { "type": "string", "maxLength": 128 },
+        "senderName": { "type": "string", "maxLength": 100 },
+        "senderHandle": { "type": "string", "maxLength": 50 },
+        "senderPhoto": { "type": "string", "maxLength": 1000 },
+        "recipientId": { "type": "string", "maxLength": 128 },
+        "recipientName": { "type": "string", "maxLength": 100 },
+        "recipientHandle": { "type": "string", "maxLength": 50 },
+        "recipientPhoto": { "type": "string", "maxLength": 1000 },
+        "participants": { "type": "array", "items": { "type": "string" } },
+        "content": { "type": "string", "maxLength": 2000 },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "conversationId", "senderId", "recipientId", "participants", "content", "read", "createdAt"]
     }
   },
   "firestore": {
@@ -134,11 +176,19 @@
     },
     "/posts/{postId}": {
       "schema": { "$ref": "#/entities/SocialPost" },
-      "description": "Global x.com-style news wire feed with commentary and reposts"
+      "description": "Global news wire feed with commentary and reposts"
     },
     "/comments/{commentId}": {
       "schema": { "$ref": "#/entities/Comment" },
       "description": "Discussion comments on news articles or social wire posts"
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "Recipient-only notifications for post comments, likes, and direct messages"
+    },
+    "/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/PrivateMessage" },
+      "description": "Private 1-on-1 messages accessible only by the sender and recipient"
     }
   }
 }

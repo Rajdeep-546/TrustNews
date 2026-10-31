@@ -20,12 +20,26 @@ import { LiveBreakingNewsTicker } from './components/LiveBreakingNewsTicker';
 import { ArticleReaderModal } from './components/ArticleReaderModal';
 import { UniversalSearchModal } from './components/UniversalSearchModal';
 import { SocialWireFeed } from './components/SocialWireFeed';
-import { UserProfileDashboard } from './components/UserProfileDashboard';
+import { UserProfileDashboard, DashboardSubTab } from './components/UserProfileDashboard';
+import { ChatPartner } from './components/PrivateMessengerView';
 
 import { ScrollToTopButton } from './components/ScrollToTopButton';
-import { Box } from 'lucide-react';
+import { Box, ArrowLeft } from 'lucide-react';
 import PromoteHeader from './ruixenui/promote-header';
 import { RuixenGradientFooter } from '@/registry/ruixenui/ruixen-gradient-footer';
+
+const TAB_LABELS: Record<ActiveTab, string> = {
+  overview: 'Overview',
+  feed: 'Ranked News Feed',
+  wire: 'Social Wire',
+  profile: 'Analyst Profile',
+  sources: 'Source Registry',
+  pareto: 'Pareto Frontier',
+  comparison: '7 Baselines',
+  fairness: 'Bias & Fairness',
+  ablation: 'Ablation & Stats',
+  factcheck: 'AI Fact-Check',
+};
 
 function MainApp() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
@@ -46,22 +60,154 @@ function MainApp() {
   const [selectedReaderArticle, setSelectedReaderArticle] = useState<ScoredArticle | null>(null);
   const [repostDraftArticle, setRepostDraftArticle] = useState<NewsArticle | ScoredArticle | null>(null);
   const [inspectedProfileUid, setInspectedProfileUid] = useState<string | null>(null);
+  const [dashboardSubTab, setDashboardSubTab] = useState<DashboardSubTab>('preferences');
+  const [messagePartner, setMessagePartner] = useState<ChatPartner | null>(null);
   const [strictPersonalization, setStrictPersonalization] = useState<boolean>(true);
 
-  // Parse URL parameters for direct UID profile viewing or wire post link
+  // Track internal history stack so Back always steps back page-by-page without leaving the site
+  const isPopStateRef = React.useRef<boolean>(false);
+  const historyDepthRef = React.useRef<number>(0);
+
+  // Parse URL parameters on initial load & initialize base history state
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const profileUid = urlParams.get('profile');
-      const wirePost = urlParams.get('wirePost');
-      if (profileUid) {
-        setInspectedProfileUid(profileUid);
-        setActiveTab('profile');
-      } else if (wirePost) {
-        setActiveTab('wire');
-      }
+    if (typeof window === 'undefined') return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const profileUid = urlParams.get('profile');
+    const wirePost = urlParams.get('wirePost');
+    const tabParam = urlParams.get('tab') as ActiveTab | null;
+
+    let initialTab: ActiveTab = 'overview';
+    if (profileUid) {
+      setInspectedProfileUid(profileUid);
+      initialTab = 'profile';
+      setActiveTab('profile');
+    } else if (wirePost) {
+      initialTab = 'wire';
+      setActiveTab('wire');
+    } else if (tabParam && TAB_LABELS[tabParam]) {
+      initialTab = tabParam;
+      setActiveTab(tabParam);
+    }
+
+    // Ensure an overview root state exists in browser history so Back from a deep link stays in-app
+    if (initialTab !== 'overview') {
+      const baseUrl = new URL(window.location.href);
+      baseUrl.search = '';
+      window.history.replaceState(
+        { tab: 'overview', category: null, profileUid: null, readerOpen: false, feedPage: 1 },
+        '',
+        baseUrl.toString()
+      );
+      window.history.pushState(
+        { tab: initialTab, category: null, profileUid: profileUid || null, readerOpen: false, feedPage: 1 },
+        '',
+        window.location.href
+      );
+      historyDepthRef.current = 1;
+    } else {
+      window.history.replaceState(
+        { tab: 'overview', category: null, profileUid: null, readerOpen: false, feedPage: 1 },
+        '',
+        window.location.href
+      );
     }
   }, []);
+
+  // Push navigation state whenever activeTab, feedCategoryFilter, inspectedProfileUid, or selectedReaderArticle changes
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (isPopStateRef.current) return;
+
+    const currentState = window.history.state;
+    const isReaderOpen = Boolean(selectedReaderArticle);
+
+    if (
+      currentState &&
+      currentState.tab === activeTab &&
+      (currentState.category ?? null) === (feedCategoryFilter ?? null) &&
+      (currentState.profileUid ?? null) === (inspectedProfileUid ?? null) &&
+      Boolean(currentState.readerOpen) === isReaderOpen
+    ) {
+      return;
+    }
+
+    const url = new URL(window.location.href);
+    if (activeTab === 'overview') {
+      url.searchParams.delete('tab');
+      url.searchParams.delete('page');
+      url.searchParams.delete('profile');
+    } else {
+      url.searchParams.set('tab', activeTab);
+      if (activeTab !== 'feed') {
+        url.searchParams.delete('page');
+      }
+      if (activeTab === 'profile' && inspectedProfileUid) {
+        url.searchParams.set('profile', inspectedProfileUid);
+      } else {
+        url.searchParams.delete('profile');
+      }
+    }
+
+    window.history.pushState(
+      {
+        tab: activeTab,
+        category: feedCategoryFilter ?? null,
+        profileUid: inspectedProfileUid ?? null,
+        readerOpen: isReaderOpen,
+        feedPage: activeTab === 'feed' ? (currentState?.feedPage || 1) : 1,
+      },
+      '',
+      url.toString()
+    );
+    historyDepthRef.current += 1;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [activeTab, feedCategoryFilter, inspectedProfileUid, selectedReaderArticle]);
+
+  // Listen for browser Back / Forward button (popstate) to step back page-by-page
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handlePopState = (event: PopStateEvent) => {
+      isPopStateRef.current = true;
+      historyDepthRef.current = Math.max(0, historyDepthRef.current - 1);
+      const state = event.state;
+
+      if (state && state.tab && TAB_LABELS[state.tab as ActiveTab]) {
+        if (!state.readerOpen) {
+          setSelectedReaderArticle(null);
+        }
+        setActiveTab(state.tab as ActiveTab);
+        setFeedCategoryFilter(state.category ?? null);
+        setInspectedProfileUid(state.profileUid ?? null);
+      } else {
+        setSelectedReaderArticle(null);
+        setActiveTab('overview');
+        setFeedCategoryFilter(null);
+        setInspectedProfileUid(null);
+      }
+
+      setTimeout(() => {
+        isPopStateRef.current = false;
+      }, 60);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const handleStepBack = () => {
+    if (selectedReaderArticle) {
+      setSelectedReaderArticle(null);
+      return;
+    }
+    if (typeof window !== 'undefined' && historyDepthRef.current > 0) {
+      window.history.back();
+    } else {
+      setActiveTab('overview');
+      setFeedCategoryFilter(null);
+      setInspectedProfileUid(null);
+    }
+  };
 
   const fetchLiveNews = async (category = 'all', searchQuery = '', force = false, region = selectedRegion) => {
     setIsLiveLoading(true);
@@ -180,11 +326,39 @@ function MainApp() {
           if (tab !== 'feed') {
             setFeedCategoryFilter(null);
           }
+          if (tab === 'profile') {
+            setInspectedProfileUid(null);
+          }
         }}
         selectedPersona={selectedPersona}
         personas={BENCHMARK_USER_PERSONAS}
         onSelectPersona={setSelectedPersona}
         onOpenSearch={() => setIsSearchOpen(true)}
+        onOpenMessages={() => {
+          setInspectedProfileUid(null);
+          setDashboardSubTab('messages');
+          setActiveTab('profile');
+        }}
+        onOpenNotifications={() => {
+          setInspectedProfileUid(null);
+          setDashboardSubTab('notifications');
+          setActiveTab('profile');
+        }}
+        onSelectNotification={(notif) => {
+          if (notif.type === 'message') {
+            setInspectedProfileUid(null);
+            setMessagePartner({
+              uid: notif.senderId,
+              displayName: notif.senderName,
+              handle: notif.senderHandle,
+              photoURL: notif.senderPhoto,
+            });
+            setDashboardSubTab('messages');
+            setActiveTab('profile');
+          } else {
+            setActiveTab('wire');
+          }
+        }}
       />
 
       {/* Real-time Breaking News Ticker Strip */}
@@ -215,7 +389,31 @@ function MainApp() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-8">
+        {/* Step-by-Step Back Navigation Bar for Sub-Pages */}
+        {activeTab !== 'overview' && (
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <button
+              onClick={handleStepBack}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-900/90 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 text-xs font-medium text-neutral-300 hover:text-white transition-all cursor-pointer shadow-xs"
+              title="Go back to previous page"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 text-sky-400" />
+              <span>Back</span>
+            </button>
+            <div className="flex items-center gap-1.5 text-[11px] font-mono text-neutral-500">
+              <button
+                onClick={() => handleNavigateTab('overview')}
+                className="hover:text-neutral-300 transition-colors cursor-pointer"
+              >
+                Overview
+              </button>
+              <span>/</span>
+              <span className="text-neutral-300 font-semibold">{TAB_LABELS[activeTab]}</span>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'overview' && (
           <NguyenLandingShowcase
             onNavigateTab={handleNavigateTab}
@@ -292,6 +490,13 @@ function MainApp() {
             }}
             onViewProfile={(uid) => {
               setInspectedProfileUid(uid);
+              setDashboardSubTab('reposts');
+              setActiveTab('profile');
+            }}
+            onMessageUser={(partner) => {
+              setInspectedProfileUid(null);
+              setMessagePartner(partner);
+              setDashboardSubTab('messages');
               setActiveTab('profile');
             }}
             repostDraftArticle={repostDraftArticle}
@@ -302,6 +507,8 @@ function MainApp() {
         {activeTab === 'profile' && (
           <UserProfileDashboard
             initialUserId={inspectedProfileUid}
+            initialDashboardTab={dashboardSubTab}
+            initialMessagePartner={messagePartner}
             onOpenReader={(art) => {
               const scored = art as ScoredArticle;
               if (!scored.computedScores) {
@@ -324,6 +531,7 @@ function MainApp() {
               setActiveTab('wire');
             }}
             onBackToFeed={() => setActiveTab('feed')}
+            onNavigateWire={() => setActiveTab('wire')}
           />
         )}
 
@@ -574,8 +782,8 @@ function MainApp() {
               <li className="text-neutral-400">Temporal Dwell Decay</li>
               <li className="text-neutral-400">Intra-List Diversity (ILD)</li>
               <li className="text-neutral-400">Shannon Entropy Spread</li>
-              <li className="text-neutral-400">Firestore Persistent State</li>
-              <li className="text-neutral-400">Asia-South1 Deployment</li>
+              <li className="text-neutral-400">Multi-Objective Re-Ranking</li>
+              <li className="text-neutral-400">Clickbait Penalty Guard</li>
             </ul>
           </div>
         </div>

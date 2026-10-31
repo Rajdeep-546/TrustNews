@@ -563,7 +563,7 @@ export const AccountMenu: React.FC<AccountMenuProps> = ({
                 <User className="w-4 h-4 text-amber-400 group-hover:text-amber-300" />
                 <span className="font-semibold text-white">My Dashboard &amp; Preferences</span>
               </div>
-              <span className="text-[10px] font-mono text-amber-400">UID</span>
+              <span className="text-[10px] font-mono text-amber-400">Profile</span>
             </button>
 
             {/* Social Wire Feed */}
@@ -575,7 +575,7 @@ export const AccountMenu: React.FC<AccountMenuProps> = ({
                 <Activity className="w-4 h-4 text-sky-400 group-hover:text-sky-300" />
                 <span>Social Wire &amp; Reposts</span>
               </div>
-              <span className="text-[10px] font-mono text-sky-400">x.com</span>
+              <span className="text-[10px] font-mono text-sky-400">Wire</span>
             </button>
 
             {/* Direct Navigation Links */}

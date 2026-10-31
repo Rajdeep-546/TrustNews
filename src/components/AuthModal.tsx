@@ -48,8 +48,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <Box className="w-5 h-5 text-black" strokeWidth={2.5} />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-white tracking-tight">Real Firebase Authentication</h3>
-            <p className="text-xs text-neutral-400 font-mono">Google OAuth 2.0 &amp; Cloud Firestore</p>
+            <h3 className="text-lg font-bold text-white tracking-tight">Account Authentication</h3>
+            <p className="text-xs text-neutral-400 font-mono">Verified Analyst Profile</p>
           </div>
         </div>
 
@@ -81,33 +81,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </div>
             </div>
 
-            {/* Real Firebase Security & Persistence State */}
-            <div className="space-y-2 rounded-xl bg-neutral-900/50 border border-neutral-850 p-3 text-xs">
-              <div className="flex items-center justify-between py-1 border-b border-neutral-850">
-                <span className="flex items-center gap-1.5 text-neutral-400">
-                  <Database className="w-3.5 h-3.5 text-cyan-400" />
-                  Cloud Database
-                </span>
-                <span className="font-mono text-neutral-200">Firestore (Live)</span>
-              </div>
-              <div className="flex items-center justify-between py-1 border-b border-neutral-850">
-                <span className="flex items-center gap-1.5 text-neutral-400">
-                  <Lock className="w-3.5 h-3.5 text-indigo-400" />
-                  Security Rules
-                </span>
-                <span className="font-mono text-emerald-400">ABAC Enforced</span>
-              </div>
-              <div className="flex items-center justify-between py-1">
-                <span className="flex items-center gap-1.5 text-neutral-400">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  Firebase UID
-                </span>
-                <span className="font-mono text-[10px] text-neutral-400 truncate max-w-[170px]">
-                  {currentUser.uid}
-                </span>
-              </div>
-            </div>
-
             <button
               onClick={async () => {
                 await signOutUser();
@@ -121,7 +94,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         ) : (
           <div className="space-y-4">
             <p className="text-xs text-neutral-300 leading-relaxed">
-              Sign in with your verified Google account to persist your reading history, personalized Multi-Objective Pareto weights, and AI fact-checking credibility audits securely in Firestore.
+              Sign in with your verified Google account to sync your reading history, personalized Multi-Objective Pareto weights, and AI fact-checking credibility audits across sessions.
             </p>
 
             {authError && (

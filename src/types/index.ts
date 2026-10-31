@@ -273,3 +273,36 @@ export interface UserProfileData {
   updatedAt?: string;
 }
 
+export interface UserNotification {
+  id: string;
+  recipientId: string;
+  senderId: string;
+  senderName: string;
+  senderHandle: string;
+  senderPhoto?: string;
+  type: 'comment' | 'message' | 'like';
+  title?: string;
+  content: string;
+  targetId?: string;
+  read: boolean;
+  createdAt: string;
+}
+
+export interface PrivateMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  senderName: string;
+  senderHandle: string;
+  senderPhoto?: string;
+  recipientId: string;
+  recipientName: string;
+  recipientHandle: string;
+  recipientPhoto?: string;
+  participants: string[];
+  content: string;
+  read: boolean;
+  createdAt: string;
+}
+
+

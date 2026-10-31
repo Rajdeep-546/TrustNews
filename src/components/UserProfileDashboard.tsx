@@ -20,7 +20,9 @@ import {
   Calendar,
   Layers,
   Heart,
-  MessageSquare
+  MessageSquare,
+  MessageCircle,
+  Bell,
 } from 'lucide-react';
 import { useFirebase } from '../context/FirebaseContext';
 import {
@@ -31,11 +33,24 @@ import {
   SocialPost,
 } from '../types';
 import { DEFAULT_WEIGHTS } from '../data/mindSmallDataset';
+import { NotificationsFilter } from '@/registry/ruixenui/notifications-filter';
+import { PrivateMessengerView, ChatPartner } from './PrivateMessengerView';
+
+export type DashboardSubTab =
+  | 'preferences'
+  | 'messages'
+  | 'notifications'
+  | 'reposts'
+  | 'saved'
+  | 'history';
 
 interface UserProfileDashboardProps {
   initialUserId?: string | null;
+  initialDashboardTab?: DashboardSubTab;
+  initialMessagePartner?: ChatPartner | null;
   onOpenReader?: (article: any) => void;
   onOpenWireWithRepost?: (article: any) => void;
+  onNavigateWire?: () => void;
   onBackToFeed?: () => void;
 }
 
@@ -63,8 +78,11 @@ const REGIONS_LIST = [
 
 export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
   initialUserId,
+  initialDashboardTab,
+  initialMessagePartner,
   onOpenReader,
   onOpenWireWithRepost,
+  onNavigateWire,
   onBackToFeed,
 }) => {
   const {
@@ -81,6 +99,8 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
     getUserPosts,
     getUserSavedArticles,
     toggleLikePost,
+    notifications,
+    privateMessages,
   } = useFirebase();
 
   // Active target user: if initialUserId is provided and differs from currentUser.uid, viewing public profile
@@ -91,7 +111,27 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
   const [isLoadingPublic, setIsLoadingPublic] = useState(false);
 
   // Active Tab in Dashboard
-  const [dashboardTab, setDashboardTab] = useState<'preferences' | 'reposts' | 'saved' | 'history'>('preferences');
+  const [dashboardTab, setDashboardTab] = useState<DashboardSubTab>(
+    initialMessagePartner ? 'messages' : initialDashboardTab || 'preferences'
+  );
+  const [activeMessagePartner, setActiveMessagePartner] = useState<ChatPartner | null>(
+    initialMessagePartner || null
+  );
+
+  useEffect(() => {
+    if (initialMessagePartner) {
+      setActiveMessagePartner(initialMessagePartner);
+      if (currentUser) setViewedUserId(currentUser.uid);
+      setDashboardTab('messages');
+    } else if (initialDashboardTab) {
+      setDashboardTab(initialDashboardTab);
+    }
+  }, [initialMessagePartner, initialDashboardTab, currentUser]);
+
+  const unreadNotificationsCount = notifications.filter((n) => !n.read).length;
+  const unreadMessagesCount = privateMessages.filter(
+    (m) => currentUser && m.recipientId === currentUser.uid && !m.read
+  ).length;
 
   // Preferences Form State
   const [customWeightsState, setCustomWeightsState] = useState<MultiObjectiveWeights>(
@@ -168,7 +208,7 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
     try {
       await saveCustomWeights(customWeightsState);
       await updatePreferences(customPrefsState);
-      showToast('Custom preferences & ranking weights saved to Firestore!');
+      showToast('Custom preferences & ranking weights saved!');
     } catch (err) {
       console.error(err);
     }
@@ -193,7 +233,7 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
   const copyProfileLink = (uidToCopy: string) => {
     const url = `${window.location.origin}?profile=${uidToCopy}`;
     navigator.clipboard.writeText(url);
-    showToast(`Profile link copied! Anyone can view with UID: ${uidToCopy}`);
+    showToast('Profile link copied to clipboard!');
   };
 
   const displayedProfile = isSelf ? userProfile : publicProfile;
@@ -213,8 +253,10 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
       {!isSelf && currentUser && (
         <div className="flex items-center justify-between bg-neutral-900/90 border border-neutral-800 rounded-xl px-4 py-2 text-xs">
           <span className="text-neutral-400">
-            Viewing public profile for UID:{' '}
-            <span className="font-mono text-sky-400 font-bold">{viewedUserId}</span>
+            Viewing public profile:{' '}
+            <span className="font-mono text-sky-400 font-bold">
+              {displayedProfile?.displayName || displayedProfile?.handle || 'Verified Analyst'}
+            </span>
           </span>
           <button
             onClick={() => setViewedUserId(currentUser.uid)}
@@ -270,21 +312,6 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
                   Active since 2026
                 </span>
               </div>
-
-              {/* Unique User ID Badge */}
-              <div className="flex items-center gap-1.5 pt-1">
-                <span className="text-[10px] font-mono text-neutral-500 uppercase">Unique UID:</span>
-                <span className="text-[11px] font-mono text-neutral-300 bg-neutral-900 px-2 py-0.5 rounded border border-neutral-800">
-                  {viewedUserId || currentUser?.uid || 'anonymous'}
-                </span>
-                <button
-                  onClick={() => copyProfileLink(viewedUserId || currentUser?.uid || '')}
-                  className="p-1 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded transition-colors cursor-pointer"
-                  title="Copy direct shareable profile link with UID"
-                >
-                  <Copy className="w-3 h-3" />
-                </button>
-              </div>
             </div>
           </div>
 
@@ -308,13 +335,34 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
                 </button>
               </>
             ) : (
-              <button
-                onClick={() => copyProfileLink(viewedUserId || '')}
-                className="px-3 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 text-xs font-medium text-white transition-all flex items-center gap-1.5 cursor-pointer"
-              >
-                <Copy className="w-3.5 h-3.5" />
-                <span>Copy UID Link</span>
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                {viewedUserId && (
+                  <button
+                    onClick={() => {
+                      const targetPartner: ChatPartner = {
+                        uid: viewedUserId,
+                        displayName: displayedProfile?.displayName || 'Analyst',
+                        handle: displayedProfile?.handle || '@analyst',
+                        photoURL: displayedProfile?.photoURL,
+                      };
+                      setActiveMessagePartner(targetPartner);
+                      if (currentUser) setViewedUserId(currentUser.uid);
+                      setDashboardTab('messages');
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-xs font-bold text-black transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    <span>Message Analyst</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => copyProfileLink(viewedUserId || '')}
+                  className="px-3 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 text-xs font-medium text-white transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Copy Profile Link</span>
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -443,6 +491,40 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
         )}
 
         <button
+          onClick={() => setDashboardTab('messages')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shrink-0 ${
+            dashboardTab === 'messages'
+              ? 'bg-neutral-800 text-white shadow-xs'
+              : 'text-neutral-400 hover:text-white hover:bg-neutral-900'
+          }`}
+        >
+          <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Private Messages</span>
+          {unreadMessagesCount > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full bg-emerald-500 text-black font-mono text-[10px] font-black">
+              {unreadMessagesCount}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setDashboardTab('notifications')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shrink-0 ${
+            dashboardTab === 'notifications'
+              ? 'bg-neutral-800 text-white shadow-xs'
+              : 'text-neutral-400 hover:text-white hover:bg-neutral-900'
+          }`}
+        >
+          <Bell className="w-3.5 h-3.5 text-sky-400" />
+          <span>Notifications</span>
+          {unreadNotificationsCount > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full bg-sky-500 text-black font-mono text-[10px] font-black">
+              {unreadNotificationsCount}
+            </span>
+          )}
+        </button>
+
+        <button
           onClick={() => setDashboardTab('reposts')}
           className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shrink-0 ${
             dashboardTab === 'reposts'
@@ -451,7 +533,7 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
           }`}
         >
           <Repeat2 className="w-3.5 h-3.5 text-sky-400" />
-          <span>{isSelf ? 'My Reposts & Dispatches' : 'Dispatches'} ({publicPosts.length})</span>
+          <span>{isSelf ? 'My Posts & Reposts' : 'Dispatches'} ({publicPosts.length})</span>
         </button>
 
         <button
@@ -481,6 +563,36 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
         )}
       </div>
 
+      {/* TAB: Private Messages (WhatsApp-style 1-on-1 Messenger) */}
+      {dashboardTab === 'messages' && (
+        <PrivateMessengerView
+          initialPartner={activeMessagePartner}
+          onViewProfile={(uid) => {
+            setViewedUserId(uid);
+            setDashboardTab('reposts');
+          }}
+        />
+      )}
+
+      {/* TAB: Real-time Notifications Filter */}
+      {dashboardTab === 'notifications' && (
+        <NotificationsFilter
+          onSelectNotification={(notif) => {
+            if (notif.type === 'message') {
+              setActiveMessagePartner({
+                uid: notif.senderId,
+                displayName: notif.senderName,
+                handle: notif.senderHandle,
+                photoURL: notif.senderPhoto,
+              });
+              setDashboardTab('messages');
+            } else {
+              onNavigateWire?.();
+            }
+          }}
+        />
+      )}
+
       {/* TAB 1: Customize Preferences & Multi-Objective Weights */}
       {isSelf && dashboardTab === 'preferences' && (
         <form onSubmit={handleSavePreferences} className="space-y-6">
@@ -493,7 +605,7 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
                     Personal Multi-Objective Ranking Weights
                   </h3>
                   <p className="text-xs text-neutral-400 mt-0.5">
-                    Configure your personalized mathematical ranking model. All weights are saved to Firestore and applied across your news stream.
+                    Configure your personalized mathematical ranking model. Your custom weights are applied across your news stream.
                   </p>
                 </div>
                 <button
@@ -721,9 +833,9 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
             </div>
 
             {/* Save Button */}
-            <div className="pt-4 border-t border-neutral-850 flex items-center justify-between">
+            <div className="pt-4 border-t border-neutral-850 flex flex-wrap items-center justify-between gap-3">
               <span className="text-[11px] text-neutral-500 font-mono">
-                Persists to Firestore database collection: users/{currentUser?.uid}
+                Synced with your personalized analyst profile
               </span>
               <button
                 type="submit"

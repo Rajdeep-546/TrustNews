@@ -23,6 +23,8 @@ import {
   UserPreferencesConfig,
   NewsArticle,
   ScoredArticle,
+  UserNotification,
+  PrivateMessage,
 } from '../types';
 
 interface FirebaseContextType {
@@ -52,7 +54,7 @@ interface FirebaseContextType {
   isArticleSaved: (articleId: string) => boolean;
   getUserSavedArticles: (userId: string) => Promise<SavedArticle[]>;
 
-  // Social Wire Posts (x.com style)
+  // Social Wire Posts
   wirePosts: SocialPost[];
   createWirePost: (
     content: string,
@@ -74,6 +76,21 @@ interface FirebaseContextType {
 
   // Public Profile
   getPublicProfile: (userId: string) => Promise<UserProfileData | null>;
+
+  // Notifications
+  notifications: UserNotification[];
+  markNotificationRead: (notificationId: string) => Promise<void>;
+  markAllNotificationsRead: () => Promise<void>;
+  deleteNotification: (notificationId: string) => Promise<void>;
+
+  // Private Direct Messages (WhatsApp style - only sender & recipient can see)
+  privateMessages: PrivateMessage[];
+  sendDirectMessage: (
+    recipient: { uid: string; displayName: string; handle: string; photoURL?: string },
+    content: string
+  ) => Promise<PrivateMessage | null>;
+  markConversationRead: (partnerUid: string) => Promise<void>;
+  deleteDirectMessage: (messageId: string) => Promise<void>;
 }
 
 const FirebaseContext = createContext<FirebaseContextType | undefined>(undefined);
@@ -97,6 +114,8 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [savedAudits, setSavedAudits] = useState<any[]>([]);
   const [savedArticles, setSavedArticles] = useState<SavedArticle[]>([]);
   const [wirePosts, setWirePosts] = useState<SocialPost[]>([]);
+  const [notifications, setNotifications] = useState<UserNotification[]>([]);
+  const [privateMessages, setPrivateMessages] = useState<PrivateMessage[]>([]);
 
   // 1. Auth Listener & User Profile Initialization
   useEffect(() => {
@@ -231,6 +250,68 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       },
       (error) => {
         handleFirestoreError(error, OperationType.GET, path);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  // 5. Real-time listener for current user's Notifications
+  useEffect(() => {
+    if (!currentUser) {
+      setNotifications([]);
+      return;
+    }
+
+    const notifQuery = query(
+      collection(db, 'notifications'),
+      where('recipientId', '==', currentUser.uid),
+      limit(100)
+    );
+
+    const unsubscribe = onSnapshot(
+      notifQuery,
+      (snapshot) => {
+        const items = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        })) as UserNotification[];
+        items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setNotifications(items);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'notifications');
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  // 6. Real-time listener for current user's Private Messages (strictly sender or recipient)
+  useEffect(() => {
+    if (!currentUser) {
+      setPrivateMessages([]);
+      return;
+    }
+
+    const msgQuery = query(
+      collection(db, 'messages'),
+      where('participants', 'array-contains', currentUser.uid),
+      limit(250)
+    );
+
+    const unsubscribe = onSnapshot(
+      msgQuery,
+      (snapshot) => {
+        const items = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        })) as PrivateMessage[];
+        items.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        setPrivateMessages(items);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'messages');
       }
     );
 
@@ -468,21 +549,27 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         authorId: currentUser.uid,
         authorName: currentUser.displayName || 'Researcher',
         authorHandle,
-        authorPhoto: currentUser.photoURL || undefined,
+        ...(currentUser.photoURL ? { authorPhoto: currentUser.photoURL } : {}),
         content: content.trim().slice(0, 2000),
         type,
-        referencedArticle: referencedArticle
+        ...(referencedArticle
           ? {
-              id: referencedArticle.id || '',
-              title: referencedArticle.title || '',
-              publisher: referencedArticle.publisher || '',
-              category: referencedArticle.category || 'General',
-              url: referencedArticle.url || '',
-              urlToImage: referencedArticle.urlToImage || '',
-              credibilityScore: referencedArticle.scores?.credibility ?? referencedArticle.sourceReliability ?? 0.8,
-              abstract: (referencedArticle.abstract || '').slice(0, 250),
+              referencedArticle: {
+                id: referencedArticle.id || '',
+                title: referencedArticle.title || '',
+                publisher: referencedArticle.publisher || '',
+                category: referencedArticle.category || 'General',
+                url: referencedArticle.url || '',
+                urlToImage: referencedArticle.urlToImage || '',
+                credibilityScore:
+                  referencedArticle.scores?.credibility ??
+                  referencedArticle.computedScores?.credibility ??
+                  referencedArticle.sourceReliability ??
+                  0.8,
+                abstract: (referencedArticle.abstract || '').slice(0, 250),
+              },
             }
-          : undefined,
+          : {}),
         likesCount: 0,
         likedBy: [],
         commentsCount: 0,
@@ -492,10 +579,8 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       await setDoc(doc(db, 'posts', postId), postData);
 
-      if (type === 'repost') {
-        const newReposts = (userProfile?.repostsCount || 0) + 1;
-        await updateProfileDetails({ repostsCount: newReposts });
-      }
+      const newReposts = (userProfile?.repostsCount || 0) + 1;
+      await updateProfileDetails({ repostsCount: newReposts });
 
       return postId;
     } catch (error) {
@@ -545,6 +630,29 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         },
         { merge: true }
       );
+
+      // Send notification to post author when another user likes their post
+      if (!hasLiked && post.authorId !== currentUser.uid) {
+        const notifId = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const senderHandle =
+          userProfile?.handle ||
+          `@${(currentUser.displayName || 'user').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 15)}`;
+        const notifData: UserNotification = {
+          id: notifId,
+          recipientId: post.authorId,
+          senderId: currentUser.uid,
+          senderName: currentUser.displayName || 'Analyst',
+          senderHandle,
+          ...(currentUser.photoURL ? { senderPhoto: currentUser.photoURL } : {}),
+          type: 'like',
+          title: 'liked your post',
+          content: post.content.slice(0, 140),
+          targetId: cleanPostId,
+          read: false,
+          createdAt: new Date().toISOString(),
+        };
+        await setDoc(doc(db, 'notifications', notifId), notifData);
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
     }
@@ -590,14 +698,14 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         authorId: currentUser.uid,
         authorName: currentUser.displayName || 'News Analyst',
         authorHandle,
-        authorPhoto: currentUser.photoURL || undefined,
+        ...(currentUser.photoURL ? { authorPhoto: currentUser.photoURL } : {}),
         content: content.trim().slice(0, 2000),
         createdAt: new Date().toISOString(),
       };
 
       await setDoc(doc(db, 'comments', commentId), commentDoc);
 
-      // Increment post comment counter if targeting a wire post
+      // Increment post comment counter if targeting a wire post and notify post author
       if (targetType === 'post') {
         const cleanPostId = sanitizeId(targetId);
         const postRef = doc(db, 'posts', cleanPostId);
@@ -609,6 +717,26 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             { commentsCount: (postData.commentsCount || 0) + 1 },
             { merge: true }
           );
+
+          // Notify post author when another user comments on their post
+          if (postData.authorId !== currentUser.uid) {
+            const notifId = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+            const notifDoc: UserNotification = {
+              id: notifId,
+              recipientId: postData.authorId,
+              senderId: currentUser.uid,
+              senderName: currentUser.displayName || 'News Analyst',
+              senderHandle: authorHandle,
+              ...(currentUser.photoURL ? { senderPhoto: currentUser.photoURL } : {}),
+              type: 'comment',
+              title: 'commented on your post',
+              content: content.trim().slice(0, 200),
+              targetId: cleanPostId,
+              read: false,
+              createdAt: new Date().toISOString(),
+            };
+            await setDoc(doc(db, 'notifications', notifId), notifDoc);
+          }
         }
       }
 
@@ -653,7 +781,136 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  // --- Public Profile Lookup (Anyone can view by unique UID) ---
+  // --- Notifications Management ---
+  const markNotificationRead = async (notificationId: string) => {
+    if (!currentUser) return;
+    const cleanId = sanitizeId(notificationId);
+    const path = `notifications/${cleanId}`;
+    try {
+      await setDoc(doc(db, 'notifications', cleanId), { read: true }, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
+    }
+  };
+
+  const markAllNotificationsRead = async () => {
+    if (!currentUser) return;
+    const unread = notifications.filter((n) => !n.read);
+    await Promise.all(
+      unread.map((n) =>
+        setDoc(doc(db, 'notifications', sanitizeId(n.id)), { read: true }, { merge: true }).catch((err) =>
+          handleFirestoreError(err, OperationType.UPDATE, `notifications/${n.id}`)
+        )
+      )
+    );
+  };
+
+  const deleteNotification = async (notificationId: string) => {
+    if (!currentUser) return;
+    const cleanId = sanitizeId(notificationId);
+    const path = `notifications/${cleanId}`;
+    try {
+      await deleteDoc(doc(db, 'notifications', cleanId));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  };
+
+  // --- Private 1-on-1 Direct Messaging (WhatsApp style) ---
+  const sendDirectMessage = async (
+    recipient: { uid: string; displayName: string; handle: string; photoURL?: string },
+    content: string
+  ): Promise<PrivateMessage | null> => {
+    if (!currentUser) {
+      await signIn();
+      return null;
+    }
+
+    const trimmed = content.trim().slice(0, 2000);
+    if (!trimmed) return null;
+
+    const msgId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const path = `messages/${msgId}`;
+    const sortedPair = [currentUser.uid, recipient.uid].sort();
+    const conversationId = `conv_${sanitizeId(sortedPair[0])}_${sanitizeId(sortedPair[1])}`;
+
+    try {
+      const senderHandle =
+        userProfile?.handle ||
+        `@${(currentUser.displayName || 'user').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 15)}`;
+
+      const msgDoc: PrivateMessage = {
+        id: msgId,
+        conversationId,
+        senderId: currentUser.uid,
+        senderName: userProfile?.displayName || currentUser.displayName || 'Analyst',
+        senderHandle,
+        ...(currentUser.photoURL ? { senderPhoto: currentUser.photoURL } : {}),
+        recipientId: recipient.uid,
+        recipientName: recipient.displayName || 'Analyst',
+        recipientHandle: recipient.handle || '@analyst',
+        ...(recipient.photoURL ? { recipientPhoto: recipient.photoURL } : {}),
+        participants: [currentUser.uid, recipient.uid],
+        content: trimmed,
+        read: false,
+        createdAt: new Date().toISOString(),
+      };
+
+      await setDoc(doc(db, 'messages', msgId), msgDoc);
+
+      // Also create a real-time notification for the recipient if messaging another user
+      if (recipient.uid !== currentUser.uid) {
+        const notifId = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const notifDoc: UserNotification = {
+          id: notifId,
+          recipientId: recipient.uid,
+          senderId: currentUser.uid,
+          senderName: msgDoc.senderName,
+          senderHandle,
+          ...(currentUser.photoURL ? { senderPhoto: currentUser.photoURL } : {}),
+          type: 'message',
+          title: 'sent you a private message',
+          content: trimmed.slice(0, 200),
+          targetId: currentUser.uid,
+          read: false,
+          createdAt: new Date().toISOString(),
+        };
+        await setDoc(doc(db, 'notifications', notifId), notifDoc);
+      }
+
+      return msgDoc;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, path);
+      return null;
+    }
+  };
+
+  const markConversationRead = async (partnerUid: string) => {
+    if (!currentUser) return;
+    const unreadIncoming = privateMessages.filter(
+      (m) => m.senderId === partnerUid && m.recipientId === currentUser.uid && !m.read
+    );
+    await Promise.all(
+      unreadIncoming.map((m) =>
+        setDoc(doc(db, 'messages', sanitizeId(m.id)), { read: true }, { merge: true }).catch((err) =>
+          handleFirestoreError(err, OperationType.UPDATE, `messages/${m.id}`)
+        )
+      )
+    );
+  };
+
+  const deleteDirectMessage = async (messageId: string) => {
+    if (!currentUser) return;
+    const cleanId = sanitizeId(messageId);
+    const path = `messages/${cleanId}`;
+    try {
+      await deleteDoc(doc(db, 'messages', cleanId));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  };
+
+  // --- Public Profile Lookup ---
   const getPublicProfile = async (userId: string): Promise<UserProfileData | null> => {
     const cleanUid = sanitizeId(userId);
     const path = `users/${cleanUid}`;
@@ -697,6 +954,14 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         getComments,
         deleteComment,
         getPublicProfile,
+        notifications,
+        markNotificationRead,
+        markAllNotificationsRead,
+        deleteNotification,
+        privateMessages,
+        sendDirectMessage,
+        markConversationRead,
+        deleteDirectMessage,
       }}
     >
       {children}

@@ -649,13 +649,13 @@ export const NguyenLandingShowcase: React.FC<NguyenLandingShowcaseProps> = ({ on
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-sky-500/20 text-sky-400 border border-sky-500/30">
-                    x.com Style Feed
+                    Community Wire
                   </span>
-                  <span className="text-xs text-neutral-400 font-mono">Real-Time Community</span>
+                  <span className="text-xs text-neutral-400 font-mono">Real-Time Discussions</span>
                 </div>
                 <h3 className="text-xl font-bold text-white mb-2">Live News Social Wire</h3>
                 <p className="text-xs text-neutral-300 leading-relaxed">
-                  Broadcast analytical dispatches, repost breaking news with peer commentary, like insights, and engage in thread discussions with fellow analysts.
+                  Write standalone posts, broadcast analytical dispatches, repost breaking news with peer commentary, like insights, and engage in thread discussions.
                 </p>
               </div>
               <button
@@ -671,13 +671,13 @@ export const NguyenLandingShowcase: React.FC<NguyenLandingShowcaseProps> = ({ on
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                    Firestore Persisted
+                    Personalized Profile
                   </span>
-                  <span className="text-xs text-neutral-400 font-mono">Personalized Model</span>
+                  <span className="text-xs text-neutral-400 font-mono">Custom Ranking Model</span>
                 </div>
                 <h3 className="text-xl font-bold text-white mb-2">Analyst Preferences &amp; Profile</h3>
                 <p className="text-xs text-neutral-300 leading-relaxed">
-                  Customize your multi-objective ranking sliders (&gamma; credibility, &beta; dwell, &delta; diversity), store bookmarks, track reposts, and share your unique public profile UID with anyone.
+                  Customize your multi-objective ranking sliders (&gamma; credibility, &beta; dwell, &delta; diversity), store bookmarks, track posts, and share your public analyst profile.
                 </p>
               </div>
               <button

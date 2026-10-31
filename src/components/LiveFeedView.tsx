@@ -182,10 +182,55 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
   };
 
   // Pagination states
-  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [currentPage, setCurrentPage] = useState<number>(() => {
+    if (typeof window !== 'undefined' && window.history.state?.feedPage) {
+      return Number(window.history.state.feedPage) || 1;
+    }
+    return 1;
+  });
   const [pageSize, setPageSize] = useState<number>(6);
   const [pageJumpInput, setPageJumpInput] = useState<string>('');
   const feedContainerRef = useRef<HTMLDivElement>(null);
+  const isPoppingPageRef = useRef<boolean>(false);
+
+  const navigateToFeedPage = (targetPage: number) => {
+    setCurrentPage(targetPage);
+    if (typeof window !== 'undefined' && !isPoppingPageRef.current) {
+      const prevState = window.history.state || { tab: 'feed' };
+      if (prevState.feedPage !== targetPage) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('tab', 'feed');
+        url.searchParams.set('page', String(targetPage));
+        window.history.pushState(
+          { ...prevState, tab: 'feed', feedPage: targetPage, feedReaderOpen: false },
+          '',
+          url.toString()
+        );
+      }
+    }
+  };
+
+  // Listen to browser Back/Forward buttons for step-by-step page navigation
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      const state = event.state;
+      isPoppingPageRef.current = true;
+      if (state && typeof state.feedPage === 'number') {
+        setCurrentPage(state.feedPage);
+      } else {
+        setCurrentPage(1);
+      }
+      if (!state?.feedReaderOpen) {
+        setSelectedArticleForRead(null);
+      }
+      setTimeout(() => {
+        isPoppingPageRef.current = false;
+      }, 50);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Sync category filter if prop changes
   useEffect(() => {
@@ -197,7 +242,7 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
   // Reset to page 1 whenever filters or search query change
   useEffect(() => {
     setCurrentPage(1);
-  }, [categoryFilter, searchInput, sortBy, activeStage, activeModel, articles.length]);
+  }, [categoryFilter, searchInput, sortBy, activeStage, activeModel]);
 
   // Strict deduplication by normalized title and ID
   const deduplicatedArticles = useMemo(() => {
@@ -1137,7 +1182,7 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
               {/* Jump to First Page */}
               <button
                 onClick={() => {
-                  setCurrentPage(1);
+                  navigateToFeedPage(1);
                   feedContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }}
                 disabled={safeCurrentPage <= 1}
@@ -1151,7 +1196,7 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
               <button
                 onClick={() => {
                   const target = Math.max(1, safeCurrentPage - 1);
-                  setCurrentPage(target);
+                  navigateToFeedPage(target);
                   feedContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }}
                 disabled={safeCurrentPage <= 1}
@@ -1180,7 +1225,7 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
                         )}
                         <button
                           onClick={() => {
-                            setCurrentPage(p);
+                            navigateToFeedPage(p);
                             feedContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                           }}
                           className={`w-8 h-8 rounded-xl font-mono text-xs font-semibold transition-all cursor-pointer flex items-center justify-center ${
@@ -1200,7 +1245,7 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
               <button
                 onClick={() => {
                   const target = Math.min(totalPages, safeCurrentPage + 1);
-                  setCurrentPage(target);
+                  navigateToFeedPage(target);
                   feedContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }}
                 disabled={safeCurrentPage >= totalPages}
@@ -1214,7 +1259,7 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
               {/* Jump to Last Page */}
               <button
                 onClick={() => {
-                  setCurrentPage(totalPages);
+                  navigateToFeedPage(totalPages);
                   feedContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }}
                 disabled={safeCurrentPage >= totalPages}
@@ -1238,7 +1283,7 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
                       if (e.key === 'Enter') {
                         const p = parseInt(pageJumpInput, 10);
                         if (!isNaN(p) && p >= 1 && p <= totalPages) {
-                          setCurrentPage(p);
+                          navigateToFeedPage(p);
                           setPageJumpInput('');
                           feedContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                         }
@@ -1251,7 +1296,7 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
                     onClick={() => {
                       const p = parseInt(pageJumpInput, 10);
                       if (!isNaN(p) && p >= 1 && p <= totalPages) {
-                        setCurrentPage(p);
+                        navigateToFeedPage(p);
                         setPageJumpInput('');
                         feedContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                       }

@@ -16,9 +16,13 @@ import {
   Menu,
   X,
   ExternalLink,
-  Box
+  Box,
+  Bell,
+  MessageCircle
 } from "lucide-react";
 import { AccountMenu } from "./account-menu";
+import { NotificationsFilter } from "./notifications-filter";
+import { UserNotification } from "../../src/types";
 
 export type ActiveTab =
   | "overview"
@@ -57,7 +61,7 @@ export const FEATURE_OPTIONS: FeatureOption[] = [
     label: "Social Wire",
     description: "Real-time dispatches, fact-check notes & debates",
     icon: MessageSquare,
-    badge: "X-FEED",
+    badge: "WIRE",
     badgeColor: "bg-sky-500/20 text-sky-400 border border-sky-500/30",
     accentColor: "text-sky-400",
   },
@@ -120,6 +124,11 @@ export interface NavbarFloatingProps {
   onSignUp?: () => void;
   onSignOut?: () => void;
   savedAuditsCount?: number;
+  unreadNotificationsCount?: number;
+  unreadMessagesCount?: number;
+  onOpenMessages?: () => void;
+  onOpenNotifications?: () => void;
+  onSelectNotification?: (notification: UserNotification) => void;
   className?: string;
   githubUrl?: string;
 }
@@ -133,6 +142,11 @@ export const NavbarFloating: React.FC<NavbarFloatingProps> = ({
   onSignUp,
   onSignOut,
   savedAuditsCount = 0,
+  unreadNotificationsCount = 0,
+  unreadMessagesCount = 0,
+  onOpenMessages,
+  onOpenNotifications,
+  onSelectNotification,
   className = "",
   githubUrl = "https://github.com/rajdeepbaruah/trustnews-moo",
 }) => {
@@ -140,9 +154,12 @@ export const NavbarFloating: React.FC<NavbarFloatingProps> = ({
   const currentTab = controlledActiveTab !== undefined ? controlledActiveTab : internalActiveTab;
 
   const [isFeaturesOpen, setIsFeaturesOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const featuresMenuRef = useRef<HTMLDivElement>(null);
   const featuresBtnRef = useRef<HTMLButtonElement>(null);
+  const notificationsMenuRef = useRef<HTMLDivElement>(null);
+  const notificationsBtnRef = useRef<HTMLButtonElement>(null);
 
   const handleSelectTab = (tab: ActiveTab) => {
     if (onTabChange) {
@@ -151,10 +168,11 @@ export const NavbarFloating: React.FC<NavbarFloatingProps> = ({
       setInternalActiveTab(tab);
     }
     setIsFeaturesOpen(false);
+    setIsNotificationsOpen(false);
     setIsMobileMenuOpen(false);
   };
 
-  // Close Features dropdown when clicking outside
+  // Close Features & Notifications dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (
@@ -165,11 +183,20 @@ export const NavbarFloating: React.FC<NavbarFloatingProps> = ({
       ) {
         setIsFeaturesOpen(false);
       }
+      if (
+        notificationsMenuRef.current &&
+        !notificationsMenuRef.current.contains(e.target as Node) &&
+        notificationsBtnRef.current &&
+        !notificationsBtnRef.current.contains(e.target as Node)
+      ) {
+        setIsNotificationsOpen(false);
+      }
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setIsFeaturesOpen(false);
+        setIsNotificationsOpen(false);
         setIsMobileMenuOpen(false);
       }
     };
@@ -342,12 +369,84 @@ export const NavbarFloating: React.FC<NavbarFloatingProps> = ({
             </button>
           )}
 
+          {/* Private Messages Shortcut */}
+          {onOpenMessages && (
+            <button
+              onClick={() => {
+                setIsNotificationsOpen(false);
+                onOpenMessages();
+              }}
+              className="relative p-1.5 sm:p-2 rounded-full border border-neutral-800 bg-neutral-900/90 text-neutral-400 hover:text-emerald-400 hover:border-emerald-500/40 transition-all cursor-pointer flex items-center justify-center shadow-xs shrink-0"
+              title="Private Messages"
+              aria-label="Private Messages"
+            >
+              <MessageCircle className="w-4 h-4" />
+              {unreadMessagesCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-emerald-500 text-black text-[9px] font-mono font-bold flex items-center justify-center shadow-xs">
+                  {unreadMessagesCount > 9 ? "9+" : unreadMessagesCount}
+                </span>
+              )}
+            </button>
+          )}
+
+          {/* Real-Time Notifications Bell & Popover */}
+          <div className="relative">
+            <button
+              ref={notificationsBtnRef}
+              onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+              className={`relative p-1.5 sm:p-2 rounded-full border transition-all cursor-pointer flex items-center justify-center shadow-xs shrink-0 ${
+                isNotificationsOpen
+                  ? "bg-sky-500/20 border-sky-500/50 text-sky-400"
+                  : "border-neutral-800 bg-neutral-900/90 text-neutral-400 hover:text-sky-400 hover:border-sky-500/40"
+              }`}
+              title="Notifications"
+              aria-label="Notifications"
+            >
+              <Bell className="w-4 h-4" />
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-mono font-bold flex items-center justify-center shadow-xs animate-pulse">
+                  {unreadNotificationsCount > 9 ? "9+" : unreadNotificationsCount}
+                </span>
+              )}
+            </button>
+
+            {isNotificationsOpen && (
+              <div
+                ref={notificationsMenuRef}
+                className="fixed sm:absolute left-2 right-2 sm:left-auto sm:right-0 top-16 sm:top-full sm:mt-3 sm:w-[440px] z-50 animate-in fade-in zoom-in-95 duration-150"
+              >
+                <NotificationsFilter
+                  compact
+                  onSelectNotification={(notif) => {
+                    setIsNotificationsOpen(false);
+                    if (onSelectNotification) {
+                      onSelectNotification(notif);
+                    }
+                  }}
+                />
+                {onOpenNotifications && (
+                  <div className="mt-1.5 flex justify-end">
+                    <button
+                      onClick={() => {
+                        setIsNotificationsOpen(false);
+                        onOpenNotifications();
+                      }}
+                      className="w-full py-2 rounded-xl bg-neutral-950/95 hover:bg-neutral-900 border border-neutral-800 text-[11px] font-mono text-sky-400 hover:text-sky-300 transition-colors cursor-pointer shadow-lg"
+                    >
+                      Open Full Notification Center &rarr;
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* GitHub Repository Button with pure black silhouette SVG */}
           <a
             href={githubUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="p-1 sm:p-1.5 rounded-full border border-neutral-800 bg-black hover:bg-neutral-900 hover:border-neutral-700 transition-all cursor-pointer flex items-center justify-center group shadow-xs shrink-0"
+            className="p-1 sm:p-1.5 rounded-full border border-neutral-800 bg-black hover:bg-neutral-900 hover:border-neutral-700 transition-all cursor-pointer hidden sm:flex items-center justify-center group shadow-xs shrink-0"
             title="View Source on GitHub"
             aria-label="View Source Code Repository on GitHub"
           >

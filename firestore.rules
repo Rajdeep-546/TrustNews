@@ -76,5 +76,22 @@ service cloud.firestore {
       allow update: if isSignedIn() && isValidId(commentId) && existing().authorId == request.auth.uid;
       allow delete: if isSignedIn() && isValidId(commentId) && existing().authorId == request.auth.uid;
     }
+
+    // Notifications (strictly private to recipient for reading/updating/deleting; any signed-in user can create when commenting/messaging)
+    match /notifications/{notificationId} {
+      allow get, list: if isSignedIn() && existing().recipientId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(notificationId) && incoming().senderId == request.auth.uid;
+      allow update, delete: if isSignedIn() && isValidId(notificationId) && existing().recipientId == request.auth.uid;
+    }
+
+    // Private Direct Messages (WhatsApp-style 1-on-1 messages: strictly visible ONLY to sender and recipient)
+    match /messages/{messageId} {
+      allow get, list: if isSignedIn() && request.auth.uid in existing().participants;
+      allow create: if isSignedIn() && isValidId(messageId) &&
+        incoming().senderId == request.auth.uid &&
+        request.auth.uid in incoming().participants;
+      allow update: if isSignedIn() && isValidId(messageId) && request.auth.uid in existing().participants;
+      allow delete: if isSignedIn() && isValidId(messageId) && existing().senderId == request.auth.uid;
+    }
   }
 }
