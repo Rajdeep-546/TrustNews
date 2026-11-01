@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useFirebase } from "../../src/context/FirebaseContext";
 import { UserNotification } from "../../src/types";
+import { resolveUserAvatarUrl } from "../../src/utils/avatar";
 
 export type NotificationFilterTab = "all" | "unread" | "comment" | "message" | "like";
 
@@ -223,17 +224,11 @@ export const NotificationsFilter: React.FC<NotificationsFilterProps> = ({
             >
               {/* Sender Avatar + Type Badge */}
               <div className="relative shrink-0">
-                {item.senderPhoto ? (
-                  <img
-                    src={item.senderPhoto}
-                    alt={item.senderName}
-                    className="w-9 h-9 rounded-full border border-neutral-700 object-cover"
-                  />
-                ) : (
-                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-neutral-800 to-neutral-700 border border-neutral-700 flex items-center justify-center text-xs font-bold text-white uppercase">
-                    {item.senderName?.[0] || "U"}
-                  </div>
-                )}
+                <img
+                  src={resolveUserAvatarUrl(item.senderPhoto, item.senderName, item.senderId)}
+                  alt={item.senderName}
+                  className="w-9 h-9 rounded-full border border-neutral-700 object-cover"
+                />
                 <div className="absolute -bottom-1 -right-1">{getTypeIcon(item.type)}</div>
               </div>
 

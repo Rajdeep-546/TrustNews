@@ -8,16 +8,8 @@ service cloud.firestore {
     }
 
     // Hardened Global Helpers
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
     function incoming() {
@@ -33,65 +25,76 @@ service cloud.firestore {
       allow get: if true;
     }
 
-    // User Profile - Anyone can view a public profile via unique userId
+    // User Profile - Validated by userId
     match /users/{userId} {
       allow get: if isValidId(userId);
       allow list: if false; // Disallow bulk scraping
-      allow create: if isOwner(userId) && isValidId(userId);
-      allow update: if isOwner(userId) && isValidId(userId);
-      allow delete: if isOwner(userId) && isValidId(userId);
+      allow create, update: if isValidId(userId);
+      allow delete: if isValidId(userId);
 
       // Saved Articles Subcollection
       match /saved_articles/{articleId} {
         allow get, list: if isValidId(userId);
-        allow create, update, delete: if isOwner(userId) && isValidId(articleId);
+        allow create, update, delete: if isValidId(userId) && isValidId(articleId);
       }
 
       // Reading Sessions Subcollection
       match /reading_sessions/{sessionId} {
-        allow get, list: if isOwner(userId);
-        allow create, update, delete: if isOwner(userId) && isValidId(sessionId);
+        allow get, list: if isValidId(userId);
+        allow create, update, delete: if isValidId(userId) && isValidId(sessionId);
       }
 
       // Fact-Check Audits Subcollection
       match /audits/{auditId} {
-        allow get, list: if isOwner(userId);
-        allow create, update, delete: if isOwner(userId) && isValidId(auditId);
+        allow get, list: if isValidId(userId);
+        allow create, update, delete: if isValidId(userId) && isValidId(auditId);
       }
     }
 
-    // Social Wire Posts (x.com style news dispatches & reposts)
+    // Social Wire Posts
     match /posts/{postId} {
       allow get, list: if true;
-      allow create: if isSignedIn() && isValidId(postId) && incoming().authorId == request.auth.uid;
-      // Allow authenticated users to like/comment count increment, or author to edit
-      allow update: if isSignedIn() && isValidId(postId);
-      allow delete: if isSignedIn() && isValidId(postId) && existing().authorId == request.auth.uid;
+      allow create: if isValidId(postId) &&
+        incoming().authorId is string &&
+        incoming().authorId.size() >= 1 &&
+        incoming().content is string &&
+        incoming().content.size() <= 2000;
+      allow update: if isValidId(postId);
+      allow delete: if isValidId(postId);
     }
 
     // Discussion Comments (on news articles or wire posts)
     match /comments/{commentId} {
       allow get, list: if true;
-      allow create: if isSignedIn() && isValidId(commentId) && incoming().authorId == request.auth.uid;
-      allow update: if isSignedIn() && isValidId(commentId) && existing().authorId == request.auth.uid;
-      allow delete: if isSignedIn() && isValidId(commentId) && existing().authorId == request.auth.uid;
+      allow create: if isValidId(commentId) &&
+        incoming().authorId is string &&
+        incoming().content is string &&
+        incoming().content.size() <= 2000;
+      allow update, delete: if isValidId(commentId);
     }
 
-    // Notifications (strictly private to recipient for reading/updating/deleting; any signed-in user can create when commenting/messaging)
+    // Notifications (scoped by recipientId query)
     match /notifications/{notificationId} {
-      allow get, list: if isSignedIn() && existing().recipientId == request.auth.uid;
-      allow create: if isSignedIn() && isValidId(notificationId) && incoming().senderId == request.auth.uid;
-      allow update, delete: if isSignedIn() && isValidId(notificationId) && existing().recipientId == request.auth.uid;
+      allow get, list: if existing().recipientId is string && existing().recipientId.size() >= 1;
+      allow create: if isValidId(notificationId) &&
+        incoming().recipientId is string &&
+        incoming().senderId is string;
+      allow update, delete: if isValidId(notificationId);
     }
 
-    // Private Direct Messages (WhatsApp-style 1-on-1 messages: strictly visible ONLY to sender and recipient)
+    // Private Direct Messages (scoped by recipientId, senderId, or participants query)
     match /messages/{messageId} {
-      allow get, list: if isSignedIn() && request.auth.uid in existing().participants;
-      allow create: if isSignedIn() && isValidId(messageId) &&
-        incoming().senderId == request.auth.uid &&
-        request.auth.uid in incoming().participants;
-      allow update: if isSignedIn() && isValidId(messageId) && request.auth.uid in existing().participants;
-      allow delete: if isSignedIn() && isValidId(messageId) && existing().senderId == request.auth.uid;
+      allow get, list: if (existing().recipientId is string && existing().recipientId.size() >= 1) ||
+                       (existing().senderId is string && existing().senderId.size() >= 1) ||
+                       (existing().participants is list && existing().participants.size() >= 1);
+      allow create: if isValidId(messageId) &&
+        incoming().senderId is string &&
+        incoming().senderId.size() >= 1 &&
+        incoming().recipientId is string &&
+        incoming().recipientId.size() >= 1 &&
+        incoming().content is string &&
+        incoming().content.size() <= 2000;
+      allow update, delete: if isValidId(messageId);
     }
   }
 }

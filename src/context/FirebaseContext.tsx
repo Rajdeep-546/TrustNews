@@ -13,7 +13,23 @@ import {
   where,
   getDocs,
 } from 'firebase/firestore';
-import { auth, db, loginWithGoogle, logoutUser, handleFirestoreError, OperationType } from '../firebase';
+import {
+  auth,
+  db,
+  loginWithGoogle,
+  loginWithEmail,
+  registerWithEmail,
+  requestEmailOtp,
+  verifyEmailOtpCode,
+  checkFirebaseEmailLinkVerified,
+  logoutUser,
+  handleFirestoreError,
+  OperationType,
+  getCachedAuthUser,
+  setCachedAuthUser,
+  OtpDispatchResponse,
+} from '../firebase';
+import { resolveUserAvatarUrl } from '../utils/avatar';
 import {
   MultiObjectiveWeights,
   SavedArticle,
@@ -27,11 +43,25 @@ import {
   PrivateMessage,
 } from '../types';
 
+export interface PendingOtpSession {
+  user: User;
+  email: string;
+  displayName: string;
+  otpDispatch: OtpDispatchResponse;
+}
+
 interface FirebaseContextType {
   currentUser: User | null;
   userProfile: UserProfileData | null;
   loading: boolean;
+  pendingOtpSession: PendingOtpSession | null;
   signIn: () => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<{ requiresOtp: boolean }>;
+  signUpWithEmail: (name: string, email: string, password: string) => Promise<{ requiresOtp: boolean }>;
+  verifyEmailOtp: (code: string) => Promise<void>;
+  verifyFirebaseEmailLink: () => Promise<boolean>;
+  resendEmailOtp: () => Promise<OtpDispatchResponse>;
+  cancelPendingOtp: () => Promise<void>;
   signOutUser: () => Promise<void>;
   updateProfileDetails: (details: Partial<UserProfileData>) => Promise<void>;
   updatePreferences: (preferences: Partial<UserPreferencesConfig>) => Promise<void>;
@@ -108,69 +138,116 @@ const DEFAULT_PREFERENCES: UserPreferencesConfig = {
 };
 
 export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(() => getCachedAuthUser());
   const [userProfile, setUserProfile] = useState<UserProfileData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pendingOtpSession, setPendingOtpSession] = useState<PendingOtpSession | null>(null);
+  const awaitingOtpRef = React.useRef<boolean>(false);
   const [savedAudits, setSavedAudits] = useState<any[]>([]);
   const [savedArticles, setSavedArticles] = useState<SavedArticle[]>([]);
   const [wirePosts, setWirePosts] = useState<SocialPost[]>([]);
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
   const [privateMessages, setPrivateMessages] = useState<PrivateMessage[]>([]);
 
+  const hydrateUserProfile = useCallback(async (user: User) => {
+    const cleanUid = sanitizeId(user.uid);
+    const userDocRef = doc(db, 'users', cleanUid);
+    const initialHandle = (user.displayName || user.email?.split('@')[0] || 'reader')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '')
+      .slice(0, 20);
+
+    const resolvedAvatar = resolveUserAvatarUrl(
+      user.photoURL,
+      user.displayName || user.email,
+      cleanUid
+    );
+
+    const initialProfile: UserProfileData = {
+      uid: cleanUid,
+      displayName: user.displayName || 'News Researcher',
+      handle: `@${initialHandle || 'analyst'}`,
+      bio: 'Researcher analyzing news through multi-objective optimization and credibility heuristics.',
+      email: user.email || '',
+      photoURL: resolvedAvatar,
+      preferences: DEFAULT_PREFERENCES,
+      savedCount: 0,
+      repostsCount: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      const userDoc = await getDoc(userDocRef);
+      if (!userDoc.exists()) {
+        try {
+          await setDoc(userDocRef, initialProfile);
+        } catch (writeErr) {
+          console.warn('Initial profile write pending (client offline):', writeErr);
+        }
+        setUserProfile(initialProfile);
+      } else {
+        const data = userDoc.data() as UserProfileData;
+        const hydratedAvatar = resolveUserAvatarUrl(
+          data.photoURL || user.photoURL,
+          data.displayName || user.displayName || user.email,
+          cleanUid
+        );
+        const mergedProfile: UserProfileData = {
+          ...data,
+          photoURL: hydratedAvatar,
+        };
+        if (!data.photoURL && hydratedAvatar) {
+          setDoc(userDocRef, { photoURL: hydratedAvatar }, { merge: true }).catch(() => {});
+        }
+        setUserProfile(mergedProfile);
+      }
+    } catch (error) {
+      setUserProfile(initialProfile);
+      handleFirestoreError(error, OperationType.GET, `users/${cleanUid}`);
+    }
+  }, []);
+
   // 1. Auth Listener & User Profile Initialization
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setCurrentUser(user);
+    const cached = getCachedAuthUser();
+    if (cached) {
+      setCurrentUser(cached);
       setLoading(false);
+      hydrateUserProfile(cached);
+    }
 
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        const userDocRef = doc(db, 'users', user.uid);
-        const initialHandle = (user.displayName || user.email?.split('@')[0] || 'reader')
-          .toLowerCase()
-          .replace(/[^a-z0-9]/g, '')
-          .slice(0, 20);
-
-        const initialProfile: UserProfileData = {
+        // Do not auto-complete sign-in while waiting for the user to verify their 6-digit OTP
+        if (awaitingOtpRef.current) {
+          setLoading(false);
+          return;
+        }
+        const synced = setCachedAuthUser({
           uid: user.uid,
           displayName: user.displayName || 'News Researcher',
-          handle: `@${initialHandle || 'analyst'}`,
-          bio: 'Researcher analyzing news through multi-objective optimization and credibility heuristics.',
           email: user.email || '',
-          photoURL: user.photoURL || '',
-          preferences: DEFAULT_PREFERENCES,
-          savedCount: 0,
-          repostsCount: 0,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-
-        try {
-          const userDoc = await getDoc(userDocRef);
-          if (!userDoc.exists()) {
-            try {
-              await setDoc(userDocRef, initialProfile);
-            } catch (writeErr) {
-              console.warn('Initial profile write pending (client offline):', writeErr);
-            }
-            setUserProfile(initialProfile);
-          } else {
-            const data = userDoc.data() as UserProfileData;
-            setUserProfile(data);
-          }
-        } catch (error) {
-          // If offline or token service initializing, provide resilient local profile fallback
-          setUserProfile(initialProfile);
-          handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
-        }
+          photoURL: user.photoURL || null,
+          emailVerified: true,
+        });
+        setCurrentUser(synced);
+        setLoading(false);
+        await hydrateUserProfile(synced);
       } else {
-        setUserProfile(null);
-        setSavedArticles([]);
-        setSavedAudits([]);
+        const stillCached = getCachedAuthUser();
+        if (!stillCached) {
+          setCurrentUser(null);
+          setUserProfile(null);
+          setSavedArticles([]);
+          setSavedAudits([]);
+        }
+        setLoading(false);
       }
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [hydrateUserProfile]);
 
   // 2. Real-time listener for current user's saved articles
   useEffect(() => {
@@ -287,43 +364,251 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => unsubscribe();
   }, [currentUser]);
 
-  // 6. Real-time listener for current user's Private Messages (strictly sender or recipient)
+  // 6. Real-time listener for current user's Private Messages (recipientId == uid OR senderId == uid, plus message notifications fallback)
+  const rawMessagesRef = React.useRef<Map<string, PrivateMessage>>(new Map());
+  const receivedMapRef = React.useRef<Map<string, PrivateMessage>>(new Map());
+  const sentMapRef = React.useRef<Map<string, PrivateMessage>>(new Map());
+
+  const rebuildPrivateMessages = useCallback(
+    (uid: string, currentNotifs: UserNotification[]) => {
+      const merged = new Map<string, PrivateMessage>();
+
+      for (const [id, msg] of receivedMapRef.current.entries()) {
+        merged.set(id, msg);
+      }
+      for (const [id, msg] of sentMapRef.current.entries()) {
+        merged.set(id, msg);
+      }
+
+      // Also ensure any 'message' notification in Notifications is visible in Private Messages
+      for (const notif of currentNotifs) {
+        if (notif.type !== 'message') continue;
+        const alreadyHasMatch = Array.from(merged.values()).some(
+          (m) =>
+            m.id === notif.id ||
+            (m.senderId === notif.senderId &&
+              m.recipientId === notif.recipientId &&
+              m.content === notif.content)
+        );
+        if (!alreadyHasMatch) {
+          const sortedPair = [notif.senderId, notif.recipientId || uid].sort();
+          const conversationId = `conv_${sanitizeId(sortedPair[0])}_${sanitizeId(sortedPair[1])}`;
+          merged.set(notif.id, {
+            id: notif.id,
+            conversationId,
+            senderId: notif.senderId,
+            senderName: notif.senderName || 'Analyst',
+            senderHandle: notif.senderHandle || '@analyst',
+            ...(notif.senderPhoto ? { senderPhoto: notif.senderPhoto } : {}),
+            recipientId: notif.recipientId || uid,
+            recipientName: userProfile?.displayName || 'Analyst',
+            recipientHandle: userProfile?.handle || '@analyst',
+            participants: [notif.senderId, notif.recipientId || uid],
+            content: notif.content,
+            read: Boolean(notif.read),
+            createdAt: notif.createdAt,
+          });
+        }
+      }
+
+      rawMessagesRef.current = merged;
+      const items = Array.from(merged.values());
+      items.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      setPrivateMessages(items);
+    },
+    [userProfile?.displayName, userProfile?.handle]
+  );
+
   useEffect(() => {
     if (!currentUser) {
+      receivedMapRef.current.clear();
+      sentMapRef.current.clear();
+      rawMessagesRef.current.clear();
       setPrivateMessages([]);
       return;
     }
 
-    const msgQuery = query(
+    const receivedQuery = query(
       collection(db, 'messages'),
-      where('participants', 'array-contains', currentUser.uid),
-      limit(250)
+      where('recipientId', '==', currentUser.uid),
+      limit(200)
     );
 
-    const unsubscribe = onSnapshot(
-      msgQuery,
+    const sentQuery = query(
+      collection(db, 'messages'),
+      where('senderId', '==', currentUser.uid),
+      limit(200)
+    );
+
+    const unsubReceived = onSnapshot(
+      receivedQuery,
       (snapshot) => {
-        const items = snapshot.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...docSnap.data(),
-        })) as PrivateMessage[];
-        items.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-        setPrivateMessages(items);
+        const nextMap = new Map<string, PrivateMessage>();
+        snapshot.docs.forEach((docSnap) => {
+          nextMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() } as PrivateMessage);
+        });
+        receivedMapRef.current = nextMap;
+        rebuildPrivateMessages(currentUser.uid, notifications);
       },
       (error) => {
         handleFirestoreError(error, OperationType.LIST, 'messages');
       }
     );
 
-    return () => unsubscribe();
-  }, [currentUser]);
+    const unsubSent = onSnapshot(
+      sentQuery,
+      (snapshot) => {
+        const nextMap = new Map<string, PrivateMessage>();
+        snapshot.docs.forEach((docSnap) => {
+          nextMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() } as PrivateMessage);
+        });
+        sentMapRef.current = nextMap;
+        rebuildPrivateMessages(currentUser.uid, notifications);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'messages');
+      }
+    );
+
+    return () => {
+      unsubReceived();
+      unsubSent();
+    };
+  }, [currentUser, rebuildPrivateMessages]);
+
+  // Keep privateMessages synced if notifications list updates with any message notifications
+  useEffect(() => {
+    if (!currentUser) return;
+    rebuildPrivateMessages(currentUser.uid, notifications);
+  }, [currentUser, notifications, rebuildPrivateMessages]);
 
   const signIn = async () => {
-    await loginWithGoogle();
+    awaitingOtpRef.current = false;
+    setPendingOtpSession(null);
+    const loggedInUser = await loginWithGoogle();
+    if (loggedInUser) {
+      setCurrentUser(loggedInUser);
+      await hydrateUserProfile(loggedInUser);
+    }
+  };
+
+  const signInWithEmail = async (email: string, password: string): Promise<{ requiresOtp: boolean }> => {
+    awaitingOtpRef.current = true;
+    try {
+      const result = await loginWithEmail(email, password);
+      if (result.requiresOtpVerification && result.otpDispatch) {
+        setPendingOtpSession({
+          user: result.user,
+          email: result.user.email || email.trim().toLowerCase(),
+          displayName: result.user.displayName || 'News Researcher',
+          otpDispatch: result.otpDispatch,
+        });
+        return { requiresOtp: true };
+      }
+      awaitingOtpRef.current = false;
+      setCurrentUser(result.user);
+      await hydrateUserProfile(result.user);
+      return { requiresOtp: false };
+    } catch (err) {
+      awaitingOtpRef.current = false;
+      throw err;
+    }
+  };
+
+  const signUpWithEmail = async (
+    name: string,
+    email: string,
+    password: string
+  ): Promise<{ requiresOtp: boolean }> => {
+    awaitingOtpRef.current = true;
+    try {
+      const result = await registerWithEmail(name, email, password);
+      if (result.requiresOtpVerification && result.otpDispatch) {
+        setPendingOtpSession({
+          user: result.user,
+          email: result.user.email || email.trim().toLowerCase(),
+          displayName: name.trim() || result.user.displayName || 'News Researcher',
+          otpDispatch: result.otpDispatch,
+        });
+        return { requiresOtp: true };
+      }
+      awaitingOtpRef.current = false;
+      setCurrentUser(result.user);
+      await hydrateUserProfile(result.user);
+      return { requiresOtp: false };
+    } catch (err) {
+      awaitingOtpRef.current = false;
+      throw err;
+    }
+  };
+
+  const verifyEmailOtp = async (code: string) => {
+    if (!pendingOtpSession) {
+      throw new Error('No pending email verification session found. Please sign in again.');
+    }
+    await verifyEmailOtpCode(pendingOtpSession.email, code);
+    awaitingOtpRef.current = false;
+    const finalizedUser = setCachedAuthUser({
+      uid: pendingOtpSession.user.uid,
+      displayName: pendingOtpSession.displayName,
+      email: pendingOtpSession.email,
+      photoURL: pendingOtpSession.user.photoURL || null,
+      emailVerified: true,
+    });
+    setPendingOtpSession(null);
+    setCurrentUser(finalizedUser);
+    await hydrateUserProfile(finalizedUser);
+  };
+
+  const verifyFirebaseEmailLink = async (): Promise<boolean> => {
+    if (!pendingOtpSession) {
+      throw new Error('No pending email verification session found.');
+    }
+    const verified = await checkFirebaseEmailLinkVerified();
+    if (!verified) {
+      throw new Error(
+        'Your email link has not been clicked yet. Please click the verification link sent to your email inbox or enter the 6-digit OTP code above.'
+      );
+    }
+    awaitingOtpRef.current = false;
+    const finalizedUser = setCachedAuthUser({
+      uid: pendingOtpSession.user.uid,
+      displayName: pendingOtpSession.displayName,
+      email: pendingOtpSession.email,
+      photoURL: pendingOtpSession.user.photoURL || null,
+      emailVerified: true,
+    });
+    setPendingOtpSession(null);
+    setCurrentUser(finalizedUser);
+    await hydrateUserProfile(finalizedUser);
+    return true;
+  };
+
+  const resendEmailOtp = async (): Promise<OtpDispatchResponse> => {
+    if (!pendingOtpSession) {
+      throw new Error('No pending email verification session found.');
+    }
+    const dispatch = await requestEmailOtp(pendingOtpSession.email);
+    setPendingOtpSession((prev) => (prev ? { ...prev, otpDispatch: dispatch } : null));
+    return dispatch;
+  };
+
+  const cancelPendingOtp = async () => {
+    awaitingOtpRef.current = false;
+    setPendingOtpSession(null);
+    await logoutUser();
   };
 
   const signOutUser = async () => {
+    awaitingOtpRef.current = false;
+    setPendingOtpSession(null);
     await logoutUser();
+    setCurrentUser(null);
+    setUserProfile(null);
+    setSavedArticles([]);
+    setSavedAudits([]);
+    setNotifications([]);
+    setPrivateMessages([]);
   };
 
   const updateProfileDetails = async (details: Partial<UserProfileData>) => {
@@ -856,6 +1141,10 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         createdAt: new Date().toISOString(),
       };
 
+      // Optimistically update local state immediately
+      sentMapRef.current.set(msgId, msgDoc);
+      rebuildPrivateMessages(currentUser.uid, notifications);
+
       await setDoc(doc(db, 'messages', msgId), msgDoc);
 
       // Also create a real-time notification for the recipient if messaging another user
@@ -891,20 +1180,34 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       (m) => m.senderId === partnerUid && m.recipientId === currentUser.uid && !m.read
     );
     await Promise.all(
-      unreadIncoming.map((m) =>
-        setDoc(doc(db, 'messages', sanitizeId(m.id)), { read: true }, { merge: true }).catch((err) =>
+      unreadIncoming.map((m) => {
+        const cleanId = sanitizeId(m.id);
+        if (cleanId.startsWith('notif_')) {
+          return setDoc(doc(db, 'notifications', cleanId), { read: true }, { merge: true }).catch((err) =>
+            handleFirestoreError(err, OperationType.UPDATE, `notifications/${m.id}`)
+          );
+        }
+        return setDoc(doc(db, 'messages', cleanId), { read: true }, { merge: true }).catch((err) =>
           handleFirestoreError(err, OperationType.UPDATE, `messages/${m.id}`)
-        )
-      )
+        );
+      })
     );
   };
 
   const deleteDirectMessage = async (messageId: string) => {
     if (!currentUser) return;
     const cleanId = sanitizeId(messageId);
-    const path = `messages/${cleanId}`;
+    const isNotifBacked = cleanId.startsWith('notif_');
+    const path = isNotifBacked ? `notifications/${cleanId}` : `messages/${cleanId}`;
     try {
-      await deleteDoc(doc(db, 'messages', cleanId));
+      receivedMapRef.current.delete(cleanId);
+      sentMapRef.current.delete(cleanId);
+      if (isNotifBacked) {
+        await deleteDoc(doc(db, 'notifications', cleanId));
+      } else {
+        await deleteDoc(doc(db, 'messages', cleanId));
+      }
+      rebuildPrivateMessages(currentUser.uid, notifications);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
     }
@@ -932,7 +1235,14 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         currentUser,
         userProfile,
         loading,
+        pendingOtpSession,
         signIn,
+        signInWithEmail,
+        signUpWithEmail,
+        verifyEmailOtp,
+        verifyFirebaseEmailLink,
+        resendEmailOtp,
+        cancelPendingOtp,
         signOutUser,
         updateProfileDetails,
         updatePreferences,

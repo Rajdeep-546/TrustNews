@@ -191,32 +191,62 @@ export default function HaloReelDemo({ onNavigateTab }: HaloReelDemoProps) {
   return (
     <div className="relative isolate w-full space-y-4">
       {/* 3D Orbit Reel with strict stacking context isolation */}
-      <div className="relative isolate overflow-hidden rounded-3xl border border-neutral-800/80 bg-neutral-950/60 shadow-2xl backdrop-blur-xs">
+      <div className="relative isolate overflow-hidden rounded-2xl sm:rounded-3xl border border-neutral-800/80 bg-neutral-950/60 shadow-2xl backdrop-blur-xs">
         <HaloReel
           items={NEWS_CATEGORY_CARDS}
           aria-label="Verified News Categories and Algorithms"
           centerLabel={
-            <div className="select-none flex flex-col items-center">
-              <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-400">
+            <div className="select-none flex flex-col items-center px-2">
+              <span className="text-[9px] sm:text-[10px] font-mono uppercase tracking-widest text-neutral-400">
                 TRUSTNEWS · ORBIT
               </span>
-              <span className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight text-white drop-shadow-md">
+              <span className="text-lg sm:text-3xl md:text-4xl font-extrabold tracking-tight text-white drop-shadow-md">
                 Verified Categories
               </span>
-              <span className="text-xs text-neutral-400 mt-0.5 hidden sm:inline">
-                Click any card to inspect &amp; filter
+              <span className="text-[10px] sm:text-xs text-neutral-400 mt-0.5">
+                Swipe or tap any card to inspect &amp; filter
               </span>
             </div>
           }
-          cardWidth={150}
-          cardHeight={210}
-          minScale={0.42}
-          radiusYRatio={0.36}
+          cardWidth={148}
+          cardHeight={206}
+          minScale={0.44}
+          radiusYRatio={0.35}
           holdDuration={1200}
           stepDuration={700}
           onItemClick={handleCardClick}
-          className="h-[480px] sm:h-[530px]"
+          className="h-[340px] sm:h-[430px] md:h-[490px] lg:h-[530px] w-full"
         />
+      </div>
+
+      {/* Horizontal Touch-Scrollable Quick Category Strip for Phone & Tablet View */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1.5 pt-0.5 no-scrollbar touch-pan-x">
+        {NEWS_CATEGORY_CARDS.map((card) => {
+          const isSelected = selectedCard?.id === card.id;
+          return (
+            <button
+              key={card.id}
+              type="button"
+              onClick={() => setSelectedCard(card)}
+              className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-mono transition-all cursor-pointer border flex items-center gap-1.5 ${
+                isSelected
+                  ? "bg-white text-black font-bold border-white shadow-sm"
+                  : "bg-neutral-900/90 text-neutral-400 hover:text-white border-neutral-800 hover:border-neutral-700"
+              }`}
+            >
+              <span>{card.category}</span>
+              {card.trustScore && (
+                <span
+                  className={`text-[10px] ${
+                    isSelected ? "text-emerald-700 font-extrabold" : "text-emerald-400"
+                  }`}
+                >
+                  {card.trustScore}%
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Selected Card Interactive Insight Banner */}

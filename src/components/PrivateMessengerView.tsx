@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { useFirebase } from '../context/FirebaseContext';
 import { PrivateMessage } from '../types';
+import { resolveUserAvatarUrl } from '../utils/avatar';
+import { useOverlayBackHandler } from '../utils/backNavigation';
 
 export interface ChatPartner {
   uid: string;
@@ -47,17 +49,20 @@ export const PrivateMessengerView: React.FC<PrivateMessengerViewProps> = ({
   );
   const [messageInput, setMessageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [listFilter, setListFilter] = useState<'all' | 'messages' | 'unread'>('all');
   const [isSending, setIsSending] = useState(false);
   const [mobileShowChat, setMobileShowChat] = useState<boolean>(Boolean(initialPartner));
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  useOverlayBackHandler(mobileShowChat, () => setMobileShowChat(false), 'mobile-chat-thread');
+
   // Sync if initialPartner prop changes
   useEffect(() => {
-    if (initialPartner && initialPartner.uid !== currentUser?.uid) {
+    if (initialPartner) {
       setSelectedPartner(initialPartner);
       setMobileShowChat(true);
     }
-  }, [initialPartner, currentUser?.uid]);
+  }, [initialPartner]);
 
   // Build list of known contacts from existing privateMessages + wirePosts authors
   const contactsAndConversations = useMemo(() => {
@@ -69,14 +74,16 @@ export const PrivateMessengerView: React.FC<PrivateMessengerViewProps> = ({
         partner: ChatPartner;
         lastMessage?: PrivateMessage;
         unreadCount: number;
+        messageCount: number;
       }
     >();
 
     // 1. Add initialPartner if provided
-    if (initialPartner && initialPartner.uid !== currentUser.uid) {
+    if (initialPartner) {
       partnerMap.set(initialPartner.uid, {
         partner: initialPartner,
         unreadCount: 0,
+        messageCount: 0,
       });
     }
 
@@ -84,20 +91,25 @@ export const PrivateMessengerView: React.FC<PrivateMessengerViewProps> = ({
     for (const msg of privateMessages) {
       const isOutgoing = msg.senderId === currentUser.uid;
       const partnerUid = isOutgoing ? msg.recipientId : msg.senderId;
-      if (!partnerUid || partnerUid === currentUser.uid) continue;
+      if (!partnerUid) continue;
 
+      const isSelfChat = partnerUid === currentUser.uid;
       const partnerInfo: ChatPartner = isOutgoing
         ? {
             uid: msg.recipientId,
-            displayName: msg.recipientName || 'Analyst',
+            displayName: isSelfChat
+              ? `${msg.recipientName || currentUser.displayName || 'Analyst'} (You)`
+              : msg.recipientName || 'Analyst',
             handle: msg.recipientHandle || '@analyst',
-            photoURL: msg.recipientPhoto,
+            photoURL: msg.recipientPhoto || (isSelfChat ? currentUser.photoURL || undefined : undefined),
           }
         : {
             uid: msg.senderId,
-            displayName: msg.senderName || 'Analyst',
+            displayName: isSelfChat
+              ? `${msg.senderName || currentUser.displayName || 'Analyst'} (You)`
+              : msg.senderName || 'Analyst',
             handle: msg.senderHandle || '@analyst',
-            photoURL: msg.senderPhoto,
+            photoURL: msg.senderPhoto || (isSelfChat ? currentUser.photoURL || undefined : undefined),
           };
 
       const existing = partnerMap.get(partnerUid);
@@ -107,6 +119,7 @@ export const PrivateMessengerView: React.FC<PrivateMessengerViewProps> = ({
         partner: existing?.partner?.photoURL ? existing.partner : partnerInfo,
         lastMessage: msg, // privateMessages is sorted ascending, so last one wins
         unreadCount: (existing?.unreadCount || 0) + (isUnreadIncoming ? 1 : 0),
+        messageCount: (existing?.messageCount || 0) + 1,
       });
     }
 
@@ -121,6 +134,7 @@ export const PrivateMessengerView: React.FC<PrivateMessengerViewProps> = ({
             photoURL: post.authorPhoto,
           },
           unreadCount: 0,
+          messageCount: 0,
         });
       }
     }
@@ -142,12 +156,26 @@ export const PrivateMessengerView: React.FC<PrivateMessengerViewProps> = ({
     return list;
   }, [currentUser, privateMessages, wirePosts, initialPartner]);
 
-  // Auto-select first conversation on desktop if none selected
+  // Auto-select most recent active message thread (or first contact if no messages exist yet)
   useEffect(() => {
-    if (!selectedPartner && contactsAndConversations.length > 0) {
+    if (contactsAndConversations.length === 0) return;
+
+    if (!selectedPartner) {
       setSelectedPartner(contactsAndConversations[0].partner);
+      return;
     }
-  }, [contactsAndConversations, selectedPartner]);
+
+    // If no explicit initialPartner was passed and current selection has 0 messages while another conversation has messages, switch to the active message thread
+    if (!initialPartner) {
+      const currentEntry = contactsAndConversations.find(
+        (c) => c.partner.uid === selectedPartner.uid
+      );
+      const firstWithMessages = contactsAndConversations.find((c) => Boolean(c.lastMessage));
+      if ((!currentEntry || !currentEntry.lastMessage) && firstWithMessages) {
+        setSelectedPartner(firstWithMessages.partner);
+      }
+    }
+  }, [contactsAndConversations, selectedPartner, initialPartner]);
 
   // Filter messages for the currently selected partner
   const activeConversationMessages = useMemo(() => {
@@ -205,7 +233,12 @@ export const PrivateMessengerView: React.FC<PrivateMessengerViewProps> = ({
     }
   };
 
-  const filteredContacts = contactsAndConversations.filter(({ partner, lastMessage }) => {
+  const activeChatsCount = contactsAndConversations.filter((c) => Boolean(c.lastMessage)).length;
+  const totalUnreadChats = contactsAndConversations.filter((c) => c.unreadCount > 0).length;
+
+  const filteredContacts = contactsAndConversations.filter(({ partner, lastMessage, unreadCount }) => {
+    if (listFilter === 'messages' && !lastMessage) return false;
+    if (listFilter === 'unread' && unreadCount === 0) return false;
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -254,7 +287,7 @@ export const PrivateMessengerView: React.FC<PrivateMessengerViewProps> = ({
         }`}
       >
         {/* Left Header */}
-        <div className="p-3.5 sm:p-4 border-b border-neutral-800/90 bg-neutral-900/50 space-y-3">
+        <div className="p-3.5 sm:p-4 border-b border-neutral-800/90 bg-neutral-900/50 space-y-2.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
@@ -269,8 +302,8 @@ export const PrivateMessengerView: React.FC<PrivateMessengerViewProps> = ({
                 </span>
               </div>
             </div>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-400">
-              {contactsAndConversations.length} Contacts
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-semibold">
+              {privateMessages.length} Messages
             </span>
           </div>
 
@@ -285,6 +318,43 @@ export const PrivateMessengerView: React.FC<PrivateMessengerViewProps> = ({
               className="w-full bg-neutral-900 border border-neutral-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-neutral-500 focus:outline-hidden focus:border-emerald-500/50 font-sans"
             />
           </div>
+
+          {/* Filter Pills: All / Messages / Unread */}
+          <div className="flex items-center gap-1.5 pt-0.5">
+            <button
+              type="button"
+              onClick={() => setListFilter('all')}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                listFilter === 'all'
+                  ? 'bg-emerald-500 text-black'
+                  : 'bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800'
+              }`}
+            >
+              All ({contactsAndConversations.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setListFilter('messages')}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                listFilter === 'messages'
+                  ? 'bg-emerald-500 text-black'
+                  : 'bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800'
+              }`}
+            >
+              Active Chats ({activeChatsCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setListFilter('unread')}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                listFilter === 'unread'
+                  ? 'bg-emerald-500 text-black'
+                  : 'bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800'
+              }`}
+            >
+              Unread ({totalUnreadChats})
+            </button>
+          </div>
         </div>
 
         {/* Conversations Scroll List */}
@@ -292,93 +362,141 @@ export const PrivateMessengerView: React.FC<PrivateMessengerViewProps> = ({
           {filteredContacts.length === 0 ? (
             <div className="p-6 text-center space-y-2">
               <UserPlus className="w-6 h-6 text-neutral-600 mx-auto" />
-              <p className="text-xs font-medium text-neutral-400">No contacts found</p>
-              <p className="text-[11px] text-neutral-500">
-                Visit the Social Wire and click &ldquo;Message&rdquo; on any post author to start a private conversation.
+              <p className="text-xs font-medium text-neutral-400">
+                {listFilter === 'messages'
+                  ? 'No active message threads yet'
+                  : listFilter === 'unread'
+                  ? 'No unread messages'
+                  : 'No contacts found'}
               </p>
+              <p className="text-[11px] text-neutral-500">
+                {listFilter !== 'all'
+                  ? 'Switch to "All" to pick an analyst and send a private message.'
+                  : 'Visit the Social Wire and click "Message" on any post author to start a private conversation.'}
+              </p>
+              {listFilter !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => setListFilter('all')}
+                  className="mt-2 px-3 py-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-xs font-semibold text-emerald-400 cursor-pointer"
+                >
+                  Show All Contacts
+                </button>
+              )}
             </div>
           ) : (
-            filteredContacts.map(({ partner, lastMessage, unreadCount }) => {
+            filteredContacts.map(({ partner, lastMessage, unreadCount, messageCount }, idx) => {
               const isSelected = selectedPartner?.uid === partner.uid;
               const isOutgoingLast = lastMessage?.senderId === currentUser.uid;
+              const prevHasMessage = idx > 0 ? Boolean(filteredContacts[idx - 1].lastMessage) : false;
+              const showActiveHeader = idx === 0 && Boolean(lastMessage);
+              const showDirectoryHeader = !lastMessage && (idx === 0 || prevHasMessage);
 
               return (
-                <button
-                  key={partner.uid}
-                  onClick={() => {
-                    setSelectedPartner(partner);
-                    setMobileShowChat(true);
-                  }}
-                  className={`w-full p-3.5 text-left transition-all flex items-center gap-3 cursor-pointer ${
-                    isSelected
-                      ? 'bg-emerald-950/25 border-l-2 border-l-emerald-400'
-                      : 'hover:bg-neutral-900/70'
-                  }`}
-                >
-                  {/* Avatar */}
-                  <div className="relative shrink-0">
-                    {partner.photoURL ? (
+                <React.Fragment key={partner.uid}>
+                  {showActiveHeader && (
+                    <div className="px-3.5 py-1.5 bg-emerald-950/20 border-b border-neutral-900 flex items-center justify-between">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-400 font-bold">
+                        Active Private Messages ({activeChatsCount})
+                      </span>
+                    </div>
+                  )}
+                  {showDirectoryHeader && (
+                    <div className="px-3.5 py-1.5 bg-neutral-900/40 border-b border-neutral-900 flex items-center justify-between">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-500 font-semibold">
+                        Analyst Directory • Start New Chat
+                      </span>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => {
+                      setSelectedPartner(partner);
+                      setMobileShowChat(true);
+                    }}
+                    className={`w-full p-3.5 text-left transition-all flex items-center gap-3 cursor-pointer ${
+                      isSelected
+                        ? 'bg-emerald-950/30 border-l-2 border-l-emerald-400'
+                        : lastMessage
+                        ? 'bg-neutral-950 hover:bg-neutral-900/80'
+                        : 'hover:bg-neutral-900/60'
+                    }`}
+                  >
+                    {/* Avatar */}
+                    <div className="relative shrink-0">
                       <img
-                        src={partner.photoURL}
+                        src={resolveUserAvatarUrl(partner.photoURL, partner.displayName, partner.uid)}
                         alt={partner.displayName}
                         className="w-10 h-10 rounded-full border border-neutral-700 object-cover"
                       />
-                    ) : (
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-neutral-800 to-neutral-700 border border-neutral-700 flex items-center justify-center text-xs font-bold text-white uppercase">
-                        {partner.displayName?.[0] || 'A'}
-                      </div>
-                    )}
-                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-neutral-950" />
-                  </div>
-
-                  {/* Name & Preview */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-xs font-bold text-white truncate">
-                        {partner.displayName}
-                      </span>
-                      {lastMessage ? (
-                        <span className="text-[10px] font-mono text-neutral-500 shrink-0">
-                          {new Date(lastMessage.createdAt).toLocaleTimeString([], {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </span>
-                      ) : (
-                        <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-neutral-900 text-neutral-400 border border-neutral-800">
-                          New Chat
-                        </span>
-                      )}
+                      <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-neutral-950" />
                     </div>
 
-                    <div className="text-[10px] font-mono text-neutral-500 truncate">
-                      {partner.handle}
-                    </div>
-
-                    <div className="flex items-center justify-between gap-2 mt-1">
-                      <p className="text-[11px] text-neutral-400 truncate">
+                    {/* Name & Preview */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-xs font-bold text-white truncate">
+                          {partner.displayName}
+                        </span>
                         {lastMessage ? (
-                          <>
-                            {isOutgoingLast && (
-                              <span className="text-emerald-400 mr-1">You:</span>
-                            )}
-                            {lastMessage.content}
-                          </>
+                          <span className="text-[10px] font-mono text-emerald-400/90 shrink-0">
+                            {new Date(lastMessage.createdAt).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
                         ) : (
-                          <span className="italic text-neutral-500">
-                            Tap to start a private conversation
+                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-neutral-900 text-neutral-400 border border-neutral-800">
+                            New Chat
                           </span>
                         )}
-                      </p>
+                      </div>
 
-                      {unreadCount > 0 && (
-                        <span className="px-1.5 py-0.2 min-w-[18px] h-[18px] rounded-full bg-emerald-500 text-black font-mono text-[10px] font-black flex items-center justify-center shrink-0">
-                          {unreadCount}
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[10px] font-mono text-neutral-500 truncate">
+                          {partner.handle}
                         </span>
-                      )}
+                        {messageCount > 0 && (
+                          <span className="text-[9px] font-mono text-neutral-500">
+                            {messageCount} {messageCount === 1 ? 'msg' : 'msgs'}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 mt-1">
+                        <p
+                          className={`text-[11px] truncate ${
+                            unreadCount > 0
+                              ? 'text-white font-semibold'
+                              : lastMessage
+                              ? 'text-neutral-200'
+                              : 'text-neutral-400'
+                          }`}
+                        >
+                          {lastMessage ? (
+                            <>
+                              {isOutgoingLast ? (
+                                <span className="text-emerald-400 mr-1 font-medium">You:</span>
+                              ) : (
+                                <span className="text-sky-400 mr-1 font-medium">Received:</span>
+                              )}
+                              {lastMessage.content}
+                            </>
+                          ) : (
+                            <span className="italic text-neutral-500">
+                              Tap to start a private conversation
+                            </span>
+                          )}
+                        </p>
+
+                        {unreadCount > 0 && (
+                          <span className="px-1.5 py-0.2 min-w-[18px] h-[18px] rounded-full bg-emerald-500 text-black font-mono text-[10px] font-black flex items-center justify-center shrink-0">
+                            {unreadCount}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </button>
+                  </button>
+                </React.Fragment>
               );
             })
           )}
@@ -405,17 +523,15 @@ export const PrivateMessengerView: React.FC<PrivateMessengerViewProps> = ({
                 </button>
 
                 <div className="relative shrink-0">
-                  {selectedPartner.photoURL ? (
-                    <img
-                      src={selectedPartner.photoURL}
-                      alt={selectedPartner.displayName}
-                      className="w-9 h-9 rounded-full border border-neutral-700 object-cover"
-                    />
-                  ) : (
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-neutral-800 to-neutral-700 border border-neutral-700 flex items-center justify-center text-xs font-bold text-white uppercase">
-                      {selectedPartner.displayName?.[0] || 'A'}
-                    </div>
-                  )}
+                  <img
+                    src={resolveUserAvatarUrl(
+                      selectedPartner.photoURL,
+                      selectedPartner.displayName,
+                      selectedPartner.uid
+                    )}
+                    alt={selectedPartner.displayName}
+                    className="w-9 h-9 rounded-full border border-neutral-700 object-cover"
+                  />
                   <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-neutral-950" />
                 </div>
 

@@ -18,6 +18,7 @@ import {
   Maximize2,
   Minimize2,
   BookOpen,
+  ArrowLeft,
   ArrowRight,
   FileText,
   Bookmark,
@@ -28,6 +29,7 @@ import {
 } from 'lucide-react';
 import { ScoredArticle, UserPersona, ArticleComment } from '../types';
 import { useFirebase } from '../context/FirebaseContext';
+import { useOverlayBackHandler } from '../utils/backNavigation';
 
 export interface ArticleReaderModalProps {
   article: ScoredArticle | null;
@@ -137,6 +139,17 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose, onNextArticle, onPrevArticle, hasNextArticle, hasPrevArticle]);
+
+  useOverlayBackHandler(
+    Boolean(article),
+    () => {
+      if (article) {
+        onLogInteraction?.(article.id, secondsElapsed, feedback);
+      }
+      onClose();
+    },
+    'article-reader'
+  );
 
   if (!article) return null;
 
@@ -251,8 +264,17 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
 
         {/* Top Minimal Navigation Strip */}
         <div className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-neutral-850 bg-neutral-900/70 backdrop-blur-md shrink-0 gap-2">
-          {/* Left: Category, Publisher & Trust Badge */}
+          {/* Left: Back Button, Category, Publisher & Trust Badge */}
           <div className="flex items-center gap-2 flex-wrap min-w-0">
+            <button
+              type="button"
+              onClick={() => handleFinish()}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-neutral-800/90 hover:bg-neutral-700 border border-neutral-700 text-xs font-semibold text-neutral-200 hover:text-white transition-colors cursor-pointer shrink-0"
+              title="Back"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 text-sky-400" />
+              <span>Back</span>
+            </button>
             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold bg-neutral-800 text-white border border-neutral-700">
               {article.category}
             </span>

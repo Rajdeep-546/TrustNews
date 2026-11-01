@@ -22,9 +22,16 @@ import { UniversalSearchModal } from './components/UniversalSearchModal';
 import { SocialWireFeed } from './components/SocialWireFeed';
 import { UserProfileDashboard, DashboardSubTab } from './components/UserProfileDashboard';
 import { ChatPartner } from './components/PrivateMessengerView';
+import {
+  initGlobalBackNavigation,
+  triggerLayeredBack,
+  safePushHistoryState,
+} from './utils/backNavigation';
 
 import { ScrollToTopButton } from './components/ScrollToTopButton';
+import { GeminiChatbotDrawer } from './components/GeminiChatbotDrawer';
 import { Box, ArrowLeft } from 'lucide-react';
+import { ThemeProvider } from './context/ThemeContext';
 import PromoteHeader from './ruixenui/promote-header';
 import { RuixenGradientFooter } from '@/registry/ruixenui/ruixen-gradient-footer';
 
@@ -63,12 +70,53 @@ function MainApp() {
   const [dashboardSubTab, setDashboardSubTab] = useState<DashboardSubTab>('preferences');
   const [messagePartner, setMessagePartner] = useState<ChatPartner | null>(null);
   const [strictPersonalization, setStrictPersonalization] = useState<boolean>(true);
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = window.localStorage.getItem('trustnews_theme');
+      if (saved === 'light' || saved === 'dark') return saved;
+    }
+    return 'dark';
+  });
 
-  // Track internal history stack so Back always steps back page-by-page without leaving the site
-  const isPopStateRef = React.useRef<boolean>(false);
-  const historyDepthRef = React.useRef<number>(0);
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    if (theme === 'light') {
+      root.classList.add('light-mode');
+      root.setAttribute('data-theme', 'light');
+    } else {
+      root.classList.remove('light-mode');
+      root.setAttribute('data-theme', 'dark');
+    }
+    try {
+      window.localStorage.setItem('trustnews_theme', theme);
+    } catch {
+      // Ignore localStorage restrictions
+    }
+  }, [theme]);
 
-  // Parse URL parameters on initial load & initialize base history state
+  const handleToggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
+
+  // Explicit internal navigation stack so phone Back button & UI Back buttons always step back page-by-page without leaving the site
+  interface NavSnapshot {
+    tab: ActiveTab;
+    category: string | null;
+    profileUid: string | null;
+    dashboardSubTab: DashboardSubTab;
+  }
+
+  const navStackRef = React.useRef<NavSnapshot[]>([]);
+  const currentSnapshotRef = React.useRef<NavSnapshot>({
+    tab: 'overview',
+    category: null,
+    profileUid: null,
+    dashboardSubTab: 'preferences',
+  });
+  const isRestoringSnapshotRef = React.useRef<boolean>(false);
+
+  // Parse URL parameters on initial load & initialize global mobile Back navigation sentinel
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const urlParams = new URLSearchParams(window.location.search);
@@ -89,120 +137,118 @@ function MainApp() {
       setActiveTab(tabParam);
     }
 
-    // Ensure an overview root state exists in browser history so Back from a deep link stays in-app
     if (initialTab !== 'overview') {
-      const baseUrl = new URL(window.location.href);
-      baseUrl.search = '';
-      window.history.replaceState(
-        { tab: 'overview', category: null, profileUid: null, readerOpen: false, feedPage: 1 },
-        '',
-        baseUrl.toString()
-      );
-      window.history.pushState(
-        { tab: initialTab, category: null, profileUid: profileUid || null, readerOpen: false, feedPage: 1 },
-        '',
-        window.location.href
-      );
-      historyDepthRef.current = 1;
-    } else {
-      window.history.replaceState(
-        { tab: 'overview', category: null, profileUid: null, readerOpen: false, feedPage: 1 },
-        '',
-        window.location.href
-      );
-    }
-  }, []);
-
-  // Push navigation state whenever activeTab, feedCategoryFilter, inspectedProfileUid, or selectedReaderArticle changes
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (isPopStateRef.current) return;
-
-    const currentState = window.history.state;
-    const isReaderOpen = Boolean(selectedReaderArticle);
-
-    if (
-      currentState &&
-      currentState.tab === activeTab &&
-      (currentState.category ?? null) === (feedCategoryFilter ?? null) &&
-      (currentState.profileUid ?? null) === (inspectedProfileUid ?? null) &&
-      Boolean(currentState.readerOpen) === isReaderOpen
-    ) {
-      return;
+      navStackRef.current = [
+        { tab: 'overview', category: null, profileUid: null, dashboardSubTab: 'preferences' },
+      ];
+      currentSnapshotRef.current = {
+        tab: initialTab,
+        category: null,
+        profileUid: profileUid || null,
+        dashboardSubTab: 'preferences',
+      };
     }
 
-    const url = new URL(window.location.href);
-    if (activeTab === 'overview') {
-      url.searchParams.delete('tab');
-      url.searchParams.delete('page');
-      url.searchParams.delete('profile');
-    } else {
-      url.searchParams.set('tab', activeTab);
-      if (activeTab !== 'feed') {
-        url.searchParams.delete('page');
+    initGlobalBackNavigation(() => {
+      if (navStackRef.current.length > 0) {
+        const prev = navStackRef.current.pop()!;
+        isRestoringSnapshotRef.current = true;
+        currentSnapshotRef.current = prev;
+        setActiveTab(prev.tab);
+        setFeedCategoryFilter(prev.category);
+        setInspectedProfileUid(prev.profileUid);
+        setDashboardSubTab(prev.dashboardSubTab);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        setTimeout(() => {
+          isRestoringSnapshotRef.current = false;
+        }, 50);
+        return true;
       }
-      if (activeTab === 'profile' && inspectedProfileUid) {
-        url.searchParams.set('profile', inspectedProfileUid);
-      } else {
-        url.searchParams.delete('profile');
-      }
-    }
 
-    window.history.pushState(
-      {
-        tab: activeTab,
-        category: feedCategoryFilter ?? null,
-        profileUid: inspectedProfileUid ?? null,
-        readerOpen: isReaderOpen,
-        feedPage: activeTab === 'feed' ? (currentState?.feedPage || 1) : 1,
-      },
-      '',
-      url.toString()
-    );
-    historyDepthRef.current += 1;
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [activeTab, feedCategoryFilter, inspectedProfileUid, selectedReaderArticle]);
-
-  // Listen for browser Back / Forward button (popstate) to step back page-by-page
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const handlePopState = (event: PopStateEvent) => {
-      isPopStateRef.current = true;
-      historyDepthRef.current = Math.max(0, historyDepthRef.current - 1);
-      const state = event.state;
-
-      if (state && state.tab && TAB_LABELS[state.tab as ActiveTab]) {
-        if (!state.readerOpen) {
-          setSelectedReaderArticle(null);
-        }
-        setActiveTab(state.tab as ActiveTab);
-        setFeedCategoryFilter(state.category ?? null);
-        setInspectedProfileUid(state.profileUid ?? null);
-      } else {
-        setSelectedReaderArticle(null);
+      if (currentSnapshotRef.current.tab !== 'overview') {
+        const rootSnap: NavSnapshot = {
+          tab: 'overview',
+          category: null,
+          profileUid: null,
+          dashboardSubTab: 'preferences',
+        };
+        isRestoringSnapshotRef.current = true;
+        currentSnapshotRef.current = rootSnap;
         setActiveTab('overview');
         setFeedCategoryFilter(null);
         setInspectedProfileUid(null);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        setTimeout(() => {
+          isRestoringSnapshotRef.current = false;
+        }, 50);
+        return true;
       }
 
-      setTimeout(() => {
-        isPopStateRef.current = false;
-      }, 60);
-    };
-
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+      return false;
+    });
   }, []);
 
-  const handleStepBack = () => {
-    if (selectedReaderArticle) {
-      setSelectedReaderArticle(null);
-      return;
+  // Push navigation state whenever activeTab, feedCategoryFilter, inspectedProfileUid, or dashboardSubTab changes
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const prevSnap = currentSnapshotRef.current;
+    const hasChanged =
+      prevSnap.tab !== activeTab ||
+      (prevSnap.category ?? null) !== (feedCategoryFilter ?? null) ||
+      (prevSnap.profileUid ?? null) !== (inspectedProfileUid ?? null) ||
+      (activeTab === 'profile' && prevSnap.dashboardSubTab !== dashboardSubTab);
+
+    if (!hasChanged) return;
+
+    if (!isRestoringSnapshotRef.current) {
+      navStackRef.current = [...navStackRef.current.slice(-25), prevSnap];
     }
-    if (typeof window !== 'undefined' && historyDepthRef.current > 0) {
-      window.history.back();
-    } else {
+
+    currentSnapshotRef.current = {
+      tab: activeTab,
+      category: feedCategoryFilter ?? null,
+      profileUid: inspectedProfileUid ?? null,
+      dashboardSubTab,
+    };
+
+    try {
+      const url = new URL(window.location.href);
+      if (activeTab === 'overview') {
+        url.searchParams.delete('tab');
+        url.searchParams.delete('page');
+        url.searchParams.delete('profile');
+      } else {
+        url.searchParams.set('tab', activeTab);
+        if (activeTab !== 'feed') {
+          url.searchParams.delete('page');
+        }
+        if (activeTab === 'profile' && inspectedProfileUid) {
+          url.searchParams.set('profile', inspectedProfileUid);
+        } else {
+          url.searchParams.delete('profile');
+        }
+      }
+
+      safePushHistoryState(
+        {
+          tab: activeTab,
+          category: feedCategoryFilter ?? null,
+          profileUid: inspectedProfileUid ?? null,
+          dashboardSubTab,
+        },
+        url.toString()
+      );
+    } catch {
+      // Ignore URL manipulation issues in sandboxed frames
+    }
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [activeTab, feedCategoryFilter, inspectedProfileUid, dashboardSubTab]);
+
+  const handleStepBack = () => {
+    const handled = triggerLayeredBack();
+    if (!handled) {
       setActiveTab('overview');
       setFeedCategoryFilter(null);
       setInspectedProfileUid(null);
@@ -330,6 +376,10 @@ function MainApp() {
             setInspectedProfileUid(null);
           }
         }}
+        canGoBack={activeTab !== 'overview' || isSearchOpen || Boolean(selectedReaderArticle)}
+        onStepBack={handleStepBack}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
         selectedPersona={selectedPersona}
         personas={BENCHMARK_USER_PERSONAS}
         onSelectPersona={setSelectedPersona}
@@ -662,6 +712,9 @@ function MainApp() {
           fetchLiveNews(feedCategoryFilter || 'all', query, true, selectedRegion);
           setActiveTab('feed');
         }}
+        onNavigateTab={(tab) => {
+          handleNavigateTab(tab);
+        }}
         currentRegion={selectedRegion}
         onSelectRegion={(reg) => {
           setSelectedRegion(reg);
@@ -805,14 +858,48 @@ function MainApp() {
 
       {/* Floating Transparent Scroll-to-Top Button */}
       <ScrollToTopButton />
+
+      {/* Multi-Turn Gemini Chatbot Drawer */}
+      <GeminiChatbotDrawer
+        articles={articles}
+        selectedPersona={selectedPersona}
+        weights={weights}
+        activeTab={activeTab}
+        onSelectArticle={(art) => {
+          const scored: ScoredArticle = {
+            ...art,
+            computedScores: art.scores || {
+              relevance: 0.88,
+              engagement: 0.78,
+              satisfaction: 0.85,
+              credibility: art.sourceReliability || 0.9,
+              diversityContribution: 0.55,
+              novelty: 0.65,
+              finalRankScore: 0.87,
+              rank: 1,
+              decomposed: {
+                relevancePt: 0.3,
+                credibilityPt: 0.3,
+                satisfactionPt: 0.2,
+                diversityPt: 0.1,
+                noveltyPt: 0.1,
+                clickbaitPenaltyPt: 0,
+              },
+            },
+          };
+          setSelectedReaderArticle(scored);
+        }}
+      />
     </div>
   );
 }
 
 export default function App() {
   return (
-    <FirebaseProvider>
-      <MainApp />
-    </FirebaseProvider>
+    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} storageKey="trustnews_theme">
+      <FirebaseProvider>
+        <MainApp />
+      </FirebaseProvider>
+    </ThemeProvider>
   );
 }

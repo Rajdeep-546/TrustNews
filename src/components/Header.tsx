@@ -16,6 +16,10 @@ export interface HeaderProps {
   onOpenMessages?: () => void;
   onOpenNotifications?: () => void;
   onSelectNotification?: (notification: UserNotification) => void;
+  canGoBack?: boolean;
+  onStepBack?: () => void;
+  theme?: 'dark' | 'light';
+  onToggleTheme?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -28,9 +32,14 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenMessages,
   onOpenNotifications,
   onSelectNotification,
+  canGoBack,
+  onStepBack,
+  theme = 'dark',
+  onToggleTheme,
 }) => {
-  const { currentUser, signIn, signOutUser, savedAudits, notifications, privateMessages } = useFirebase();
+  const { currentUser, signOutUser, savedAudits, notifications, privateMessages } = useFirebase();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalDefaultSignIn, setAuthModalDefaultSignIn] = useState(true);
 
   const unreadNotificationsCount = notifications.filter((n) => !n.read).length;
   const unreadMessagesCount = currentUser
@@ -55,6 +64,10 @@ export const Header: React.FC<HeaderProps> = ({
         activeTab={activeTab}
         onTabChange={onTabChange}
         onOpenSearch={onOpenSearch}
+        canGoBack={canGoBack}
+        onStepBack={onStepBack}
+        theme={theme}
+        onToggleTheme={onToggleTheme}
         currentUser={
           currentUser
             ? {
@@ -66,8 +79,14 @@ export const Header: React.FC<HeaderProps> = ({
               }
             : null
         }
-        onSignIn={() => signIn()}
-        onSignUp={() => signIn()}
+        onSignIn={() => {
+          setAuthModalDefaultSignIn(true);
+          setIsAuthModalOpen(true);
+        }}
+        onSignUp={() => {
+          setAuthModalDefaultSignIn(false);
+          setIsAuthModalOpen(true);
+        }}
         onSignOut={signOutUser}
         savedAuditsCount={savedAudits?.length || 0}
         unreadNotificationsCount={unreadNotificationsCount}
@@ -78,10 +97,11 @@ export const Header: React.FC<HeaderProps> = ({
         githubUrl={import.meta.env.VITE_GITHUB_REPO_URL || "https://github.com/rajdeepbaruah/trustnews-moo"}
       />
 
-      {/* Real Auth & Profile Modal */}
+      {/* Real Auth & Profile Modal (AuthUI) */}
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
+        defaultIsSignIn={authModalDefaultSignIn}
       />
     </header>
   );

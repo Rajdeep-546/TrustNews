@@ -18,6 +18,7 @@ import { ExplainabilityDrawer } from './ExplainabilityDrawer';
 import { useFirebase } from '../context/FirebaseContext';
 import { LazyScrollReveal } from './LazyScrollReveal';
 import { LazyImage } from './LazyImage';
+import { useOverlayBackHandler } from '../utils/backNavigation';
 
 interface LiveFeedViewProps {
   articles: NewsArticle[];
@@ -182,55 +183,32 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
   };
 
   // Pagination states
-  const [currentPage, setCurrentPage] = useState<number>(() => {
-    if (typeof window !== 'undefined' && window.history.state?.feedPage) {
-      return Number(window.history.state.feedPage) || 1;
-    }
-    return 1;
-  });
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageHistory, setPageHistory] = useState<number[]>([]);
   const [pageSize, setPageSize] = useState<number>(6);
   const [pageJumpInput, setPageJumpInput] = useState<string>('');
   const feedContainerRef = useRef<HTMLDivElement>(null);
-  const isPoppingPageRef = useRef<boolean>(false);
 
   const navigateToFeedPage = (targetPage: number) => {
+    if (targetPage === currentPage) return;
+    setPageHistory((prev) => [...prev.slice(-15), currentPage]);
     setCurrentPage(targetPage);
-    if (typeof window !== 'undefined' && !isPoppingPageRef.current) {
-      const prevState = window.history.state || { tab: 'feed' };
-      if (prevState.feedPage !== targetPage) {
-        const url = new URL(window.location.href);
-        url.searchParams.set('tab', 'feed');
-        url.searchParams.set('page', String(targetPage));
-        window.history.pushState(
-          { ...prevState, tab: 'feed', feedPage: targetPage, feedReaderOpen: false },
-          '',
-          url.toString()
-        );
-      }
-    }
   };
 
-  // Listen to browser Back/Forward buttons for step-by-step page navigation
-  useEffect(() => {
-    const handlePopState = (event: PopStateEvent) => {
-      const state = event.state;
-      isPoppingPageRef.current = true;
-      if (state && typeof state.feedPage === 'number') {
-        setCurrentPage(state.feedPage);
-      } else {
-        setCurrentPage(1);
-      }
-      if (!state?.feedReaderOpen) {
-        setSelectedArticleForRead(null);
-      }
-      setTimeout(() => {
-        isPoppingPageRef.current = false;
-      }, 50);
-    };
-
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  // Intercept Back presses to step back page-by-page within the feed before leaving the feed tab
+  useOverlayBackHandler(
+    pageHistory.length > 0,
+    () => {
+      setPageHistory((prev) => {
+        if (prev.length === 0) return prev;
+        const next = [...prev];
+        const previousPage = next.pop() ?? 1;
+        setCurrentPage(previousPage);
+        return next;
+      });
+    },
+    `feed-page-${pageHistory.length}`
+  );
 
   // Sync category filter if prop changes
   useEffect(() => {
@@ -242,6 +220,7 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
   // Reset to page 1 whenever filters or search query change
   useEffect(() => {
     setCurrentPage(1);
+    setPageHistory([]);
   }, [categoryFilter, searchInput, sortBy, activeStage, activeModel]);
 
   // Strict deduplication by normalized title and ID

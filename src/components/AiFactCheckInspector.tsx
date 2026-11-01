@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, ShieldCheck, AlertTriangle, ShieldAlert, CheckCircle2, Search, ArrowRight, Loader2, Bookmark, BookmarkCheck } from 'lucide-react';
+import { Sparkles, ShieldCheck, AlertTriangle, ShieldAlert, CheckCircle2, Search, ArrowRight, Loader2, Bookmark, BookmarkCheck, Globe, ExternalLink } from 'lucide-react';
 import { useFirebase } from '../context/FirebaseContext';
 
 interface CredibilityAnalysisResult {
@@ -14,6 +14,9 @@ interface CredibilityAnalysisResult {
   overallCredibility: number;
   factCheckStatus: 'VERIFIED' | 'UNVERIFIED_DEVELOPING' | 'DISPUTED_SENSATIONAL';
   reasoning: string;
+  groundingSources?: Array<{ title: string; uri: string }>;
+  searchQueries?: string[];
+  groundingSummary?: string;
 }
 
 const PRESET_CLAIMS = [
@@ -279,6 +282,45 @@ export const AiFactCheckInspector: React.FC = () => {
               {result.reasoning}
             </p>
           </div>
+
+          {/* Google Search Grounding & Live Web Corroboration */}
+          {(result.groundingSummary ||
+            (Array.isArray(result.groundingSources) && result.groundingSources.length > 0)) && (
+            <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 space-y-2.5 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-sky-400 uppercase font-mono text-[10px] flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>Google Search Grounding & Web Citations (gemini-3.8-flash)</span>
+                </span>
+                {Array.isArray(result.searchQueries) && result.searchQueries.length > 0 && (
+                  <span className="text-[10px] font-mono text-slate-400 truncate max-w-xs">
+                    Query: &ldquo;{result.searchQueries[0]}&rdquo;
+                  </span>
+                )}
+              </div>
+
+              {result.groundingSummary && (
+                <p className="text-slate-300 leading-relaxed">{result.groundingSummary}</p>
+              )}
+
+              {Array.isArray(result.groundingSources) && result.groundingSources.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1">
+                  {result.groundingSources.map((src, sIdx) => (
+                    <a
+                      key={sIdx}
+                      href={src.uri}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-sky-500/40 text-slate-300 hover:text-white transition-colors"
+                    >
+                      <span className="truncate">{src.title || src.uri}</span>
+                      <ExternalLink className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

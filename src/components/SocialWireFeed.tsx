@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useFirebase } from '../context/FirebaseContext';
 import { SocialPost, ArticleComment, NewsArticle, ScoredArticle } from '../types';
+import { resolveUserAvatarUrl } from '../utils/avatar';
 
 interface SocialWireFeedProps {
   onOpenReader?: (article: any) => void;
@@ -242,17 +243,15 @@ export const SocialWireFeed: React.FC<SocialWireFeedProps> = ({
         <div className="flex gap-2.5 sm:gap-3 items-start">
           {/* Avatar */}
           <div className="shrink-0">
-            {currentUser?.photoURL ? (
-              <img
-                src={currentUser.photoURL}
-                alt={currentUser.displayName || 'User'}
-                className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-neutral-700 object-cover"
-              />
-            ) : (
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-neutral-800 to-neutral-700 border border-neutral-700 flex items-center justify-center text-xs font-bold text-white uppercase">
-                {currentUser?.displayName?.[0] || 'U'}
-              </div>
-            )}
+            <img
+              src={resolveUserAvatarUrl(
+                currentUser?.photoURL,
+                currentUser?.displayName || currentUser?.email || 'User',
+                currentUser?.uid || currentUser?.email
+              )}
+              alt={currentUser?.displayName || 'User'}
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-neutral-700 object-cover"
+            />
           </div>
 
           {/* Form */}
@@ -461,17 +460,11 @@ export const SocialWireFeed: React.FC<SocialWireFeedProps> = ({
                       onClick={() => onViewProfile?.(post.authorId)}
                       className="shrink-0 cursor-pointer group/avatar"
                     >
-                      {post.authorPhoto ? (
-                        <img
-                          src={post.authorPhoto}
-                          alt={post.authorName}
-                          className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-neutral-700 group-hover/avatar:border-sky-400 transition-colors object-cover"
-                        />
-                      ) : (
-                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-neutral-800 to-neutral-700 border border-neutral-700 group-hover/avatar:border-sky-400 flex items-center justify-center text-xs font-bold text-white uppercase transition-colors">
-                          {post.authorName[0]}
-                        </div>
-                      )}
+                      <img
+                        src={resolveUserAvatarUrl(post.authorPhoto, post.authorName, post.authorId)}
+                        alt={post.authorName}
+                        className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-neutral-700 group-hover/avatar:border-sky-400 transition-colors object-cover"
+                      />
                     </button>
 
                     <div className="flex flex-col min-w-0">

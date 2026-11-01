@@ -12,17 +12,22 @@ import {
   Sparkles,
   ChevronDown,
   Search,
+  ArrowLeft,
   ArrowRight,
   Menu,
   X,
   ExternalLink,
   Box,
   Bell,
-  MessageCircle
+  MessageCircle,
+  Sun,
+  Moon
 } from "lucide-react";
 import { AccountMenu } from "./account-menu";
 import { NotificationsFilter } from "./notifications-filter";
 import { UserNotification } from "../../src/types";
+import { useOverlayBackHandler } from "../../src/utils/backNavigation";
+import ThemeSwitch from "@/components/ui/theme-switch";
 
 export type ActiveTab =
   | "overview"
@@ -129,6 +134,10 @@ export interface NavbarFloatingProps {
   onOpenMessages?: () => void;
   onOpenNotifications?: () => void;
   onSelectNotification?: (notification: UserNotification) => void;
+  canGoBack?: boolean;
+  onStepBack?: () => void;
+  theme?: "dark" | "light";
+  onToggleTheme?: () => void;
   className?: string;
   githubUrl?: string;
 }
@@ -147,6 +156,10 @@ export const NavbarFloating: React.FC<NavbarFloatingProps> = ({
   onOpenMessages,
   onOpenNotifications,
   onSelectNotification,
+  canGoBack = false,
+  onStepBack,
+  theme = "dark",
+  onToggleTheme,
   className = "",
   githubUrl = "https://github.com/rajdeepbaruah/trustnews-moo",
 }) => {
@@ -160,6 +173,32 @@ export const NavbarFloating: React.FC<NavbarFloatingProps> = ({
   const featuresBtnRef = useRef<HTMLButtonElement>(null);
   const notificationsMenuRef = useRef<HTMLDivElement>(null);
   const notificationsBtnRef = useRef<HTMLButtonElement>(null);
+
+  const isAnyMenuOpen = isFeaturesOpen || isNotificationsOpen || isMobileMenuOpen;
+
+  useOverlayBackHandler(
+    isAnyMenuOpen,
+    () => {
+      setIsFeaturesOpen(false);
+      setIsNotificationsOpen(false);
+      setIsMobileMenuOpen(false);
+    },
+    "navbar-menu"
+  );
+
+  const handleNavbarBack = () => {
+    if (isAnyMenuOpen) {
+      setIsFeaturesOpen(false);
+      setIsNotificationsOpen(false);
+      setIsMobileMenuOpen(false);
+      return;
+    }
+    if (onStepBack) {
+      onStepBack();
+    } else {
+      handleSelectTab("overview");
+    }
+  };
 
   const handleSelectTab = (tab: ActiveTab) => {
     if (onTabChange) {
@@ -220,7 +259,7 @@ export const NavbarFloating: React.FC<NavbarFloatingProps> = ({
       {/* Floating Pill Container */}
       <div className="relative rounded-2xl sm:rounded-full bg-neutral-950/90 backdrop-blur-xl border border-neutral-800/90 shadow-2xl shadow-black/80 px-3 sm:px-5 py-2 flex items-center justify-between gap-2 sm:gap-4">
         {/* Left: Brand Mark */}
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => handleSelectTab("overview")}
             className="flex items-center gap-2 text-left cursor-pointer group"
@@ -441,6 +480,18 @@ export const NavbarFloating: React.FC<NavbarFloatingProps> = ({
             )}
           </div>
 
+          {/* Desktop Theme Switch (hidden on phone view; on phone view it lives in Profile Login section) */}
+          <div className="hidden md:flex items-center shrink-0">
+            <ThemeSwitch
+              themeOverride={theme}
+              onThemeChange={(nextTheme) => {
+                if (nextTheme !== theme && onToggleTheme) {
+                  onToggleTheme();
+                }
+              }}
+            />
+          </div>
+
           {/* GitHub Repository Button with pure black silhouette SVG */}
           <a
             href={githubUrl}
@@ -453,7 +504,9 @@ export const NavbarFloating: React.FC<NavbarFloatingProps> = ({
             <img
               src="/assets/aistudio/github-light_ff3d18bf.svg"
               alt="GitHub Repository"
-              className="w-5 h-5 rounded-full transition-transform group-hover:scale-105 select-none"
+              className={`w-5 h-5 rounded-full transition-transform group-hover:scale-105 select-none ${
+                theme === "light" ? "invert" : ""
+              }`}
             />
           </a>
 
@@ -465,6 +518,8 @@ export const NavbarFloating: React.FC<NavbarFloatingProps> = ({
             onSignOut={onSignOut || (() => {})}
             onNavigateTab={(tab) => handleSelectTab(tab as ActiveTab)}
             savedAuditsCount={savedAuditsCount}
+            theme={theme}
+            onToggleTheme={onToggleTheme}
           />
 
           {/* Quick High-Contrast Launch Button (Desktop) */}

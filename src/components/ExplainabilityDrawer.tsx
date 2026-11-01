@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { X, CheckCircle2, AlertOctagon, HelpCircle, Network, Sparkles, Scale, Info } from 'lucide-react';
+import { X, ArrowLeft, CheckCircle2, AlertOctagon, HelpCircle, Network, Sparkles, Scale, Info } from 'lucide-react';
 import { ScoredArticle, UserPersona } from '../types';
+import { useOverlayBackHandler } from '../utils/backNavigation';
 
 interface ExplainabilityDrawerProps {
   article: ScoredArticle | null;
@@ -15,6 +16,8 @@ export const ExplainabilityDrawer: React.FC<ExplainabilityDrawerProps> = ({
 }) => {
   const [aiRationale, setAiRationale] = useState<string | null>(null);
   const [loadingAi, setLoadingAi] = useState(false);
+
+  useOverlayBackHandler(Boolean(article), onClose, 'explainability-drawer');
 
   if (!article) return null;
 
@@ -50,11 +53,26 @@ export const ExplainabilityDrawer: React.FC<ExplainabilityDrawerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-end bg-slate-950/70 backdrop-blur-xs">
-      <div className="w-full max-w-xl h-full bg-slate-900 border-l border-slate-800 flex flex-col overflow-y-auto p-6 space-y-6 animate-in slide-in-from-right duration-200">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-end bg-slate-950/70 backdrop-blur-xs"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-xl h-full bg-slate-900 border-l border-slate-800 flex flex-col overflow-y-auto p-6 space-y-6 animate-in slide-in-from-right duration-200"
+      >
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+        <div className="flex items-center justify-between pb-4 border-b border-slate-800 gap-2">
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 hover:text-white transition-colors cursor-pointer shrink-0"
+              title="Back"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 text-sky-400" />
+              <span>Back</span>
+            </button>
             <span className="w-7 h-7 rounded-md bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-mono font-bold text-xs">
               #{scores.rank}
             </span>
@@ -63,7 +81,7 @@ export const ExplainabilityDrawer: React.FC<ExplainabilityDrawerProps> = ({
               <p className="text-xs text-slate-400">Score decomposition & credibility audit</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800">
+          <button onClick={onClose} className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>

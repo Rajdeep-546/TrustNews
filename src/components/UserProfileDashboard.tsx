@@ -35,6 +35,9 @@ import {
 import { DEFAULT_WEIGHTS } from '../data/mindSmallDataset';
 import { NotificationsFilter } from '@/registry/ruixenui/notifications-filter';
 import { PrivateMessengerView, ChatPartner } from './PrivateMessengerView';
+import ThemeSwitch from '@/components/ui/theme-switch';
+import { AuthUI } from '@/components/ui/auth-ui';
+import { resolveUserAvatarUrl } from '../utils/avatar';
 
 export type DashboardSubTab =
   | 'preferences'
@@ -88,7 +91,14 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
   const {
     currentUser,
     userProfile,
+    pendingOtpSession,
     signIn,
+    signInWithEmail,
+    signUpWithEmail,
+    verifyEmailOtp,
+    verifyFirebaseEmailLink,
+    resendEmailOtp,
+    cancelPendingOtp,
     updateProfileDetails,
     updatePreferences,
     saveCustomWeights,
@@ -102,6 +112,8 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
     notifications,
     privateMessages,
   } = useFirebase();
+  const [isAuthBusy, setIsAuthBusy] = useState(false);
+  const [authErrorMsg, setAuthErrorMsg] = useState<string | null>(null);
 
   // Active target user: if initialUserId is provided and differs from currentUser.uid, viewing public profile
   const [viewedUserId, setViewedUserId] = useState<string | null>(initialUserId || currentUser?.uid || null);
@@ -117,6 +129,12 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
   const [activeMessagePartner, setActiveMessagePartner] = useState<ChatPartner | null>(
     initialMessagePartner || null
   );
+
+  useEffect(() => {
+    if (currentUser && !initialUserId) {
+      setViewedUserId(currentUser.uid);
+    }
+  }, [currentUser, initialUserId]);
 
   useEffect(() => {
     if (initialMessagePartner) {
@@ -239,6 +257,106 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
   const displayedProfile = isSelf ? userProfile : publicProfile;
   const displayedSavedArticles = isSelf ? savedArticles : publicSavedArticles;
 
+  if (!currentUser && !initialUserId) {
+    return (
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-4">
+        {/* Phone View Theme Switch in Profile Login Section */}
+        <div className="flex md:hidden items-center justify-between rounded-2xl border border-neutral-800 bg-neutral-950/90 px-4 py-3">
+          <div className="flex flex-col">
+            <span className="text-xs font-bold text-white">Appearance Mode</span>
+            <span className="text-[10px] font-mono text-neutral-400">Toggle White / Dark theme</span>
+          </div>
+          <ThemeSwitch />
+        </div>
+
+        <div className="rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl overflow-hidden">
+          <AuthUI
+            onGoogleSignIn={async () => {
+              setIsAuthBusy(true);
+              setAuthErrorMsg(null);
+              try {
+                await signIn();
+              } catch (e: any) {
+                setAuthErrorMsg(e?.message || 'Google sign-in was interrupted.');
+              } finally {
+                setIsAuthBusy(false);
+              }
+            }}
+            onEmailSignIn={async (email, password) => {
+              setIsAuthBusy(true);
+              setAuthErrorMsg(null);
+              try {
+                await signInWithEmail(email, password);
+              } catch (e: any) {
+                setAuthErrorMsg(e?.message || 'Incorrect email or password.');
+              } finally {
+                setIsAuthBusy(false);
+              }
+            }}
+            onEmailSignUp={async (name, email, password) => {
+              setIsAuthBusy(true);
+              setAuthErrorMsg(null);
+              try {
+                await signUpWithEmail(name, email, password);
+              } catch (e: any) {
+                setAuthErrorMsg(e?.message || 'Unable to create account.');
+              } finally {
+                setIsAuthBusy(false);
+              }
+            }}
+            pendingOtp={
+              pendingOtpSession
+                ? {
+                    email: pendingOtpSession.email,
+                    emailDispatched: pendingOtpSession.otpDispatch.emailDispatched,
+                  }
+                : null
+            }
+            onVerifyOtp={async (code) => {
+              setIsAuthBusy(true);
+              setAuthErrorMsg(null);
+              try {
+                await verifyEmailOtp(code);
+              } catch (e: any) {
+                setAuthErrorMsg(e?.message || 'Invalid OTP code. Please try again.');
+              } finally {
+                setIsAuthBusy(false);
+              }
+            }}
+            onCheckFirebaseLink={async () => {
+              setIsAuthBusy(true);
+              setAuthErrorMsg(null);
+              try {
+                await verifyFirebaseEmailLink();
+              } catch (e: any) {
+                setAuthErrorMsg(e?.message || 'Email link not verified yet.');
+              } finally {
+                setIsAuthBusy(false);
+              }
+            }}
+            onResendOtp={async () => {
+              setIsAuthBusy(true);
+              setAuthErrorMsg(null);
+              try {
+                await resendEmailOtp();
+              } catch (e: any) {
+                setAuthErrorMsg(e?.message || 'Failed to resend OTP.');
+              } finally {
+                setIsAuthBusy(false);
+              }
+            }}
+            onCancelOtp={async () => {
+              setAuthErrorMsg(null);
+              await cancelPendingOtp();
+            }}
+            isLoading={isAuthBusy}
+            errorMessage={authErrorMsg}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
       {/* Toast Notification */}
@@ -276,17 +394,15 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
           {/* Avatar & User Details */}
           <div className="flex items-center gap-4">
             <div className="relative">
-              {displayedProfile?.photoURL ? (
-                <img
-                  src={displayedProfile.photoURL}
-                  alt={displayedProfile.displayName}
-                  className="w-16 h-16 rounded-2xl border-2 border-neutral-700 object-cover shadow-md"
-                />
-              ) : (
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-neutral-800 to-neutral-700 border-2 border-neutral-700 flex items-center justify-center text-xl font-bold text-white uppercase shadow-md">
-                  {displayedProfile?.displayName?.[0] || 'U'}
-                </div>
-              )}
+              <img
+                src={resolveUserAvatarUrl(
+                  displayedProfile?.photoURL || (isSelf ? currentUser?.photoURL : null),
+                  displayedProfile?.displayName || (isSelf ? currentUser?.displayName || currentUser?.email : 'User'),
+                  displayedProfile?.uid || viewedUserId || currentUser?.uid
+                )}
+                alt={displayedProfile?.displayName || 'Profile'}
+                className="w-16 h-16 rounded-full border-2 border-neutral-700 object-cover shadow-md"
+              />
               <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-500 border-2 border-black flex items-center justify-center text-[10px] text-black font-bold">
                 ✓
               </div>
@@ -316,7 +432,11 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
+            {/* Phone View Theme Switch in Profile Section */}
+            <div className="flex md:hidden items-center gap-2 mr-auto sm:mr-0">
+              <ThemeSwitch />
+            </div>
             {isSelf ? (
               <>
                 <button
@@ -436,23 +556,51 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
 
         {/* Stats Row */}
         <div className="mt-5 pt-4 border-t border-neutral-850 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-xl p-3">
+          <button
+            type="button"
+            onClick={() => setDashboardTab('messages')}
+            className="bg-neutral-900/60 hover:bg-neutral-900 border border-neutral-800/80 hover:border-emerald-500/40 rounded-xl p-3 text-left transition-all cursor-pointer"
+          >
+            <div className="text-[10px] font-mono uppercase text-neutral-400 flex items-center justify-between gap-1">
+              <span className="flex items-center gap-1">
+                <MessageCircle className="w-3 h-3 text-emerald-400" /> Private Messages
+              </span>
+              {unreadMessagesCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-emerald-500 text-black font-mono text-[9px] font-black">
+                  {unreadMessagesCount} new
+                </span>
+              )}
+            </div>
+            <div className="text-lg font-black text-white mt-1">
+              {privateMessages.length}
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setDashboardTab('reposts')}
+            className="bg-neutral-900/60 hover:bg-neutral-900 border border-neutral-800/80 hover:border-sky-500/40 rounded-xl p-3 text-left transition-all cursor-pointer"
+          >
             <div className="text-[10px] font-mono uppercase text-neutral-400 flex items-center gap-1">
               <Repeat2 className="w-3 h-3 text-sky-400" /> Reposts &amp; Dispatches
             </div>
             <div className="text-lg font-black text-white mt-1">
               {publicPosts.length}
             </div>
-          </div>
+          </button>
 
-          <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-xl p-3">
+          <button
+            type="button"
+            onClick={() => setDashboardTab('saved')}
+            className="bg-neutral-900/60 hover:bg-neutral-900 border border-neutral-800/80 hover:border-amber-500/40 rounded-xl p-3 text-left transition-all cursor-pointer"
+          >
             <div className="text-[10px] font-mono uppercase text-neutral-400 flex items-center gap-1">
               <Bookmark className="w-3 h-3 text-amber-400" /> Bookmarked Articles
             </div>
             <div className="text-lg font-black text-white mt-1">
               {displayedSavedArticles.length}
             </div>
-          </div>
+          </button>
 
           <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-xl p-3">
             <div className="text-[10px] font-mono uppercase text-neutral-400 flex items-center gap-1">
@@ -460,15 +608,6 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
             </div>
             <div className="text-lg font-black text-emerald-400 mt-1">
               {Math.round((customWeightsState.gammaCredibility || 0.3) * 100)}%
-            </div>
-          </div>
-
-          <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-xl p-3">
-            <div className="text-[10px] font-mono uppercase text-neutral-400 flex items-center gap-1">
-              <Gauge className="w-3 h-3 text-indigo-400" /> Reading Pace
-            </div>
-            <div className="text-lg font-black text-white mt-1 font-mono">
-              {customPrefsState.readingWpm || 240} <span className="text-xs font-normal text-neutral-500">WPM</span>
             </div>
           </div>
         </div>
@@ -499,7 +638,7 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
           }`}
         >
           <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Private Messages</span>
+          <span>Private Messages ({privateMessages.length})</span>
           {unreadMessagesCount > 0 && (
             <span className="px-1.5 py-0.2 rounded-full bg-emerald-500 text-black font-mono text-[10px] font-black">
               {unreadMessagesCount}
