@@ -42,6 +42,23 @@ export const ParticleTextDots: React.FC<ParticleTextDotsProps> = ({
   const particlesRef = useRef<Particle[]>([]);
   const [particlesLoaded, setParticlesLoaded] = useState(false);
   const [currentFontSize, setCurrentFontSize] = useState<number>(fontSize || 64);
+  const [isHtmlLightMode, setIsHtmlLightMode] = useState<boolean>(() =>
+    typeof document !== "undefined" ? document.documentElement.classList.contains("light-mode") : false
+  );
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    const updateLightMode = () => {
+      setIsHtmlLightMode(root.classList.contains("light-mode"));
+    };
+    updateLightMode();
+    const observer = new MutationObserver(updateLightMode);
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  const effectiveVariant = isHtmlLightMode ? "light" : variant;
 
   const mouseRef = useRef<{ x: number; y: number; active: boolean }>({
     x: -9999,
@@ -114,7 +131,7 @@ export const ParticleTextDots: React.FC<ParticleTextDotsProps> = ({
       "#059669",
     ];
 
-    const palette = color ? [color] : variant === "dark" ? darkPalette : lightPalette;
+    const palette = color ? [color] : effectiveVariant === "dark" ? darkPalette : lightPalette;
 
     for (let y = 0; y < canvas.height; y += step) {
       for (let x = 0; x < canvas.width; x += step) {
@@ -152,7 +169,7 @@ export const ParticleTextDots: React.FC<ParticleTextDotsProps> = ({
     particlesRef.current = newParticles;
     setParticlesLoaded(newParticles.length > 0);
     ctx.clearRect(0, 0, width, height);
-  }, [text, variant, particleGap, dotSize, fontSize, color]);
+  }, [text, effectiveVariant, particleGap, dotSize, fontSize, color]);
 
   // Handle ResizeObserver for accurate sizing on desktop & mobile, plus font loading
   useEffect(() => {

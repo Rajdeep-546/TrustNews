@@ -159,14 +159,14 @@ export const ProductCardHero: React.FC<ProductCardHeroProps> = ({
   return (
     <section
       aria-label="Product Card Hero Section"
-      className={`relative isolate overflow-hidden w-full border-b border-neutral-800/80 bg-black text-neutral-100 py-12 sm:py-16 md:py-20 lg:py-24 px-4 sm:px-6 lg:px-8 ${className}`}
+      className={`hero-product-section relative isolate overflow-hidden w-full border-b border-neutral-800/80 bg-black text-neutral-100 py-12 sm:py-16 md:py-20 lg:py-24 px-4 sm:px-6 lg:px-8 ${className}`}
     >
       {/* Background ambient radial gradients */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-gradient-to-tr from-emerald-500/10 via-cyan-500/10 to-indigo-500/10 blur-[120px] pointer-events-none -z-10" />
-      <div className="absolute bottom-0 right-0 w-[400px] h-[300px] bg-emerald-600/5 blur-[100px] pointer-events-none -z-10" />
+      <div className="hero-ambient-blob absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-gradient-to-tr from-emerald-500/10 via-cyan-500/10 to-indigo-500/10 blur-[120px] pointer-events-none -z-10" />
+      <div className="hero-ambient-blob absolute bottom-0 right-0 w-[400px] h-[300px] bg-emerald-600/5 blur-[100px] pointer-events-none -z-10" />
 
       {/* Subtle Grid Lines pattern */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#1f29370f_1px,transparent_1px),linear-gradient(to_bottom,#1f29370f_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] pointer-events-none -z-10" />
+      <div className="hero-grid-pattern absolute inset-0 bg-[linear-gradient(to_right,#1f29370f_1px,transparent_1px),linear-gradient(to_bottom,#1f29370f_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] pointer-events-none -z-10" />
 
       <div className="max-w-7xl mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
@@ -176,7 +176,7 @@ export const ProductCardHero: React.FC<ProductCardHeroProps> = ({
             
             {/* Pill Badge */}
             {badge && (
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-neutral-900/90 border border-neutral-800 text-xs font-mono text-neutral-300 mb-6 shadow-xs backdrop-blur-md">
+              <div className="hero-pill-badge inline-flex items-center gap-2 px-3 py-1 rounded-full bg-neutral-900/90 border border-neutral-800 text-xs font-mono text-neutral-300 mb-6 shadow-xs backdrop-blur-md">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                 <span className="font-semibold text-white tracking-wider">{badge}</span>
                 {badgeLabel && (
@@ -234,7 +234,7 @@ export const ProductCardHero: React.FC<ProductCardHeroProps> = ({
                     onSecondaryCtaClick();
                   }
                 }}
-                className="inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl bg-neutral-900/90 hover:bg-neutral-850 text-neutral-200 border border-neutral-800 font-medium text-sm transition-all cursor-pointer backdrop-blur-xs"
+                className="hero-secondary-cta inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl bg-neutral-900/90 hover:bg-neutral-850 text-neutral-200 border border-neutral-800 font-medium text-sm transition-all cursor-pointer backdrop-blur-xs"
               >
                 <Sliders className="w-4 h-4 text-emerald-400" />
                 <span>{secondaryCtaText}</span>
@@ -279,19 +279,19 @@ export const ProductCardHero: React.FC<ProductCardHeroProps> = ({
           <div className="lg:col-span-6 relative">
             
             {/* Top Floating Badge Accent */}
-            <div className="absolute -top-4 -right-2 sm:-top-5 sm:right-6 z-20 hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-neutral-900/95 border border-emerald-500/40 text-emerald-400 text-xs font-mono shadow-xl backdrop-blur-md">
+            <div className="hero-floating-badge absolute -top-4 -right-2 sm:-top-5 sm:right-6 z-20 hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-neutral-900/95 border border-emerald-500/40 text-emerald-400 text-xs font-mono shadow-xl backdrop-blur-md">
               <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
               <span>Fact-Checked &amp; Provenance Verified</span>
             </div>
 
             {/* Bottom Floating Badge Accent */}
-            <div className="absolute -bottom-4 -left-2 sm:-bottom-5 sm:left-4 z-20 hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-neutral-900/95 border border-cyan-500/40 text-cyan-400 text-xs font-mono shadow-xl backdrop-blur-md">
+            <div className="hero-floating-badge absolute -bottom-4 -left-2 sm:-bottom-5 sm:left-4 z-20 hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-neutral-900/95 border border-cyan-500/40 text-cyan-400 text-xs font-mono shadow-xl backdrop-blur-md">
               <Layers className="w-3.5 h-3.5 text-cyan-400" />
               <span>Anti-Filter Bubble Protection Active</span>
             </div>
 
             {/* Main Product Card Container with Glassmorphism */}
-            <div className="relative rounded-2xl border border-neutral-800 bg-neutral-950/95 shadow-2xl p-5 sm:p-6 backdrop-blur-xl transition-all overflow-hidden group">
+            <div className="hero-product-card relative rounded-2xl border border-neutral-800 bg-neutral-950/95 shadow-2xl p-5 sm:p-6 backdrop-blur-xl transition-all overflow-hidden group">
               
               {/* Subtle Card Glow */}
               <div className="absolute -inset-px rounded-2xl bg-gradient-to-b from-white/10 to-transparent pointer-events-none opacity-50" />

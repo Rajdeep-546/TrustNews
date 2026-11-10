@@ -295,11 +295,11 @@ export const CloudBackground: React.FC<CloudBackgroundProps> = ({
         <canvas
           ref={canvasRef}
           aria-hidden="true"
-          className="absolute inset-0 w-full h-full pointer-events-none object-cover transition-opacity duration-1000"
+          className="cloud-bg-canvas absolute inset-0 w-full h-full pointer-events-none object-cover transition-opacity duration-1000"
         />
       ) : (
         /* Fallback 2D animated CSS radial cloud blobs if WebGL is unavailable */
-        <div aria-hidden="true" className="absolute inset-0 w-full h-full pointer-events-none bg-neutral-950 overflow-hidden">
+        <div aria-hidden="true" className="cloud-bg-fallback absolute inset-0 w-full h-full pointer-events-none bg-neutral-950 overflow-hidden">
           <div className="absolute -top-1/4 -left-1/4 w-[150%] h-[150%] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-sky-900/30 via-slate-900/40 to-black animate-pulse" />
           <div className="absolute top-1/4 -right-1/4 w-96 h-96 rounded-full bg-cyan-600/10 blur-3xl animate-bounce" />
         </div>
@@ -308,13 +308,13 @@ export const CloudBackground: React.FC<CloudBackgroundProps> = ({
       {/* Atmospheric Dimming, Sliding Blur & Vignette Overlays */}
       <div
         aria-hidden="true"
-        className={`absolute inset-0 pointer-events-none ${blurClasses} bg-gradient-to-b from-black/20 via-black/40 to-black/85`}
+        className={`cloud-bg-vignette absolute inset-0 pointer-events-none ${blurClasses} bg-gradient-to-b from-black/20 via-black/40 to-black/85`}
       />
 
       {/* Subtle Bottom Fade to seamlessly blend into subsequent sections */}
       <div
         aria-hidden="true"
-        className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black via-black/80 to-transparent pointer-events-none"
+        className="cloud-bg-bottom-fade absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black via-black/80 to-transparent pointer-events-none"
       />
 
       {/* Optional Inset Content */}

@@ -286,5 +286,98 @@ html.light-mode .halo-reel-card .text-neutral-400 {
   color: #cbd5e1 !important;
 }
 
+/* ============================================================================
+   UNIFIED HERO SECTION & PRODUCT CARD HERO — LIGHT MODE ONLY REFINEMENTS
+   Reduces background blur, provides a crisp professional white surface, and
+   keeps the background graphic subtly and clearly visible in Light Mode only.
+   ============================================================================ */
+html.light-mode .hero-unified-showcase {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 12px 36px -8px rgba(15, 23, 42, 0.07), 0 4px 12px -2px rgba(15, 23, 42, 0.04) !important;
+}
 
+/* Invert dark WebGL cloud canvas to crisp airy white/sky clouds with clear detail */
+html.light-mode .hero-unified-showcase .cloud-bg-canvas {
+  filter: invert(1) hue-rotate(180deg) brightness(1.06) contrast(0.95) !important;
+  opacity: 0.32 !important;
+}
 
+/* Remove heavy backdrop-blur and dark black vignette gradients on hero background */
+html.light-mode .hero-unified-showcase .cloud-bg-vignette {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.28) 0%,
+    rgba(255, 255, 255, 0.45) 55%,
+    rgba(255, 255, 255, 0.72) 100%
+  ) !important;
+}
+
+html.light-mode .hero-unified-showcase .cloud-bg-bottom-fade {
+  background: linear-gradient(
+    to top,
+    rgba(255, 255, 255, 0.85) 0%,
+    rgba(255, 255, 255, 0.4) 50%,
+    transparent 100%
+  ) !important;
+}
+
+/* Make the prismatic background graphic show clearly and crisply on white without blur */
+html.light-mode .hero-unified-showcase .hero-prismatic-img {
+  mix-blend-mode: normal !important;
+  filter: invert(1) hue-rotate(180deg) saturate(1.15) contrast(1.04) !important;
+  opacity: 0.34 !important;
+  transform: scale(1) !important;
+}
+
+html.light-mode .hero-unified-showcase .hero-edge-fade-v {
+  background: linear-gradient(
+    to top,
+    rgba(255, 255, 255, 0.55) 0%,
+    transparent 45%,
+    rgba(255, 255, 255, 0.35) 100%
+  ) !important;
+}
+
+html.light-mode .hero-unified-showcase .hero-edge-fade-h {
+  background: linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0.35) 0%,
+    transparent 35%,
+    transparent 65%,
+    rgba(255, 255, 255, 0.35) 100%
+  ) !important;
+}
+
+/* Keep ProductCardHero section transparent inside the unified hero so background shows through clearly */
+html.light-mode .hero-unified-showcase .hero-product-section {
+  background-color: transparent !important;
+  border-color: transparent !important;
+}
+
+/* Remove heavy 120px/100px blur blobs inside ProductCardHero in Light Mode */
+html.light-mode .hero-unified-showcase .hero-ambient-blob {
+  opacity: 0.08 !important;
+  filter: blur(24px) !important;
+}
+
+/* Clean, low-blur professional white surfaces for hero badges and interactive card */
+html.light-mode .hero-unified-showcase .hero-pill-badge,
+html.light-mode .hero-unified-showcase .hero-secondary-cta,
+html.light-mode .hero-unified-showcase .hero-floating-badge {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+  backdrop-filter: blur(2px) !important;
+  -webkit-backdrop-filter: blur(2px) !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05) !important;
+}
+
+html.light-mode .hero-unified-showcase .hero-product-card {
+  background-color: rgba(255, 255, 255, 0.84) !important;
+  backdrop-filter: blur(3px) !important;
+  -webkit-backdrop-filter: blur(3px) !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 12px 28px -6px rgba(15, 23, 42, 0.07), 0 4px 10px -2px rgba(15, 23, 42, 0.04) !important;
+}

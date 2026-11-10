@@ -57,9 +57,9 @@ export const NguyenLandingShowcase: React.FC<NguyenLandingShowcaseProps> = ({ on
   return (
     <div className="w-full text-neutral-100 font-sans pb-16 selection:bg-neutral-800">
       {/* Unified Hero Section: Single cohesive part containing CloudBackground, ParticleTextDots, and ProductCardHero */}
-      <div className="relative mb-12 -mx-2 sm:-mx-4 px-2 sm:px-4 pt-4 sm:pt-6 pb-2 overflow-hidden rounded-3xl border border-neutral-800/80 shadow-[0_0_50px_rgba(6,182,212,0.12)] bg-neutral-950">
+      <div className="hero-unified-showcase relative mb-12 -mx-2 sm:-mx-4 px-2 sm:px-4 pt-4 sm:pt-6 pb-2 overflow-hidden rounded-3xl border border-neutral-800/80 shadow-[0_0_50px_rgba(6,182,212,0.12)] bg-neutral-950">
         <CloudBackground
-          className="absolute inset-0 w-full h-full"
+          className="hero-cloud-bg absolute inset-0 w-full h-full"
           dim={0.72}
           speed={0.35}
           colorTint="cyan-blue"
@@ -68,20 +68,20 @@ export const NguyenLandingShowcase: React.FC<NguyenLandingShowcaseProps> = ({ on
         />
 
         {/* Seamless Shade-Shifters Prismatic Gradient Background */}
-        <div className="absolute inset-0 pointer-events-none overflow-hidden select-none z-0">
+        <div className="hero-prismatic-wrap absolute inset-0 pointer-events-none overflow-hidden select-none z-0">
           <img
             src="/assets/aistudio/shade-shifters-10_3ca20496.png"
             alt=""
-            className="w-full h-full object-cover object-center opacity-85 mix-blend-screen scale-105 pointer-events-none"
+            className="hero-prismatic-img w-full h-full object-cover object-center opacity-85 mix-blend-screen scale-105 pointer-events-none"
           />
           {/* Subtle edge fades for seamless blending into card borders */}
-          <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/80 via-transparent to-neutral-950/60 pointer-events-none" />
-          <div className="absolute inset-0 bg-gradient-to-r from-neutral-950/50 via-transparent to-neutral-950/50 pointer-events-none" />
+          <div className="hero-edge-fade-v absolute inset-0 bg-gradient-to-t from-neutral-950/80 via-transparent to-neutral-950/60 pointer-events-none" />
+          <div className="hero-edge-fade-h absolute inset-0 bg-gradient-to-r from-neutral-950/50 via-transparent to-neutral-950/50 pointer-events-none" />
         </div>
 
         <div className="relative z-10 w-full">
           {/* Particle Text Dots: TrustNews Brand Title */}
-          <div className="relative flex flex-col items-center justify-center pt-2 pb-1 px-3">
+          <div className="hero-particle-header relative flex flex-col items-center justify-center pt-2 pb-1 px-3">
             <ParticleTextDots text="TrustNews" variant="dark" />
           </div>
 
