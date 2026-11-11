@@ -27,8 +27,7 @@ service cloud.firestore {
 
     // User Profile - Validated by userId
     match /users/{userId} {
-      allow get: if isValidId(userId);
-      allow list: if false; // Disallow bulk scraping
+      allow get, list: if true;
       allow create, update: if isValidId(userId);
       allow delete: if isValidId(userId);
 

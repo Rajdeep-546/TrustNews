@@ -104,7 +104,8 @@ interface FirebaseContextType {
   getComments: (targetType: 'article' | 'post', targetId: string) => Promise<ArticleComment[]>;
   deleteComment: (commentId: string) => Promise<void>;
 
-  // Public Profile
+  // Public Profile & Analyst Directory
+  directoryUsers: UserProfileData[];
   getPublicProfile: (userId: string) => Promise<UserProfileData | null>;
 
   // Notifications
@@ -140,6 +141,7 @@ const DEFAULT_PREFERENCES: UserPreferencesConfig = {
 export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(() => getCachedAuthUser());
   const [userProfile, setUserProfile] = useState<UserProfileData | null>(null);
+  const [directoryUsers, setDirectoryUsers] = useState<UserProfileData[]>([]);
   const [loading, setLoading] = useState(true);
   const [pendingOtpSession, setPendingOtpSession] = useState<PendingOtpSession | null>(null);
   const awaitingOtpRef = React.useRef<boolean>(false);
@@ -152,20 +154,31 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const hydrateUserProfile = useCallback(async (user: User) => {
     const cleanUid = sanitizeId(user.uid);
     const userDocRef = doc(db, 'users', cleanUid);
-    const initialHandle = (user.displayName || user.email?.split('@')[0] || 'reader')
+    const cleanAuthName = (user.displayName || '')
+      .replace(/\s*\((?:Your\s+)?6-Digit\s+OTP:\s*\d+\)/gi, '')
+      .trim();
+    const emailPrefixName = user.email
+      ? user.email
+          .split('@')[0]
+          .replace(/[._-]+/g, ' ')
+          .replace(/\b\w/g, (c) => c.toUpperCase())
+      : '';
+    const resolvedDisplayName = cleanAuthName || emailPrefixName || 'News Researcher';
+
+    const initialHandle = (resolvedDisplayName || user.email?.split('@')[0] || 'reader')
       .toLowerCase()
       .replace(/[^a-z0-9]/g, '')
       .slice(0, 20);
 
     const resolvedAvatar = resolveUserAvatarUrl(
       user.photoURL,
-      user.displayName || user.email,
+      resolvedDisplayName || user.email,
       cleanUid
     );
 
     const initialProfile: UserProfileData = {
       uid: cleanUid,
-      displayName: user.displayName || 'News Researcher',
+      displayName: resolvedDisplayName,
       handle: `@${initialHandle || 'analyst'}`,
       bio: 'Researcher analyzing news through multi-objective optimization and credibility heuristics.',
       email: user.email || '',
@@ -188,17 +201,46 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setUserProfile(initialProfile);
       } else {
         const data = userDoc.data() as UserProfileData;
+        const cleanStoredName = (data.displayName || '')
+          .replace(/\s*\((?:Your\s+)?6-Digit\s+OTP:\s*\d+\)/gi, '')
+          .trim();
+        const finalName =
+          cleanStoredName && cleanStoredName !== 'News Researcher'
+            ? cleanStoredName
+            : resolvedDisplayName || cleanStoredName || 'News Researcher';
+        const rawHandle = data.handle || initialProfile.handle;
+        const finalHandle = rawHandle.startsWith('@') ? rawHandle : `@${rawHandle}`;
         const hydratedAvatar = resolveUserAvatarUrl(
           data.photoURL || user.photoURL,
-          data.displayName || user.displayName || user.email,
+          finalName || user.email,
           cleanUid
         );
         const mergedProfile: UserProfileData = {
+          ...initialProfile,
           ...data,
+          uid: cleanUid,
+          displayName: finalName,
+          handle: finalHandle,
           photoURL: hydratedAvatar,
         };
-        if (!data.photoURL && hydratedAvatar) {
-          setDoc(userDocRef, { photoURL: hydratedAvatar }, { merge: true }).catch(() => {});
+        if (
+          !data.uid ||
+          !data.displayName ||
+          !data.handle ||
+          !data.photoURL ||
+          data.displayName !== finalName
+        ) {
+          setDoc(
+            userDocRef,
+            {
+              uid: cleanUid,
+              displayName: finalName,
+              handle: finalHandle,
+              photoURL: hydratedAvatar,
+              ...(user.email && !data.email ? { email: user.email } : {}),
+            },
+            { merge: true }
+          ).catch(() => {});
         }
         setUserProfile(mergedProfile);
       }
@@ -299,6 +341,49 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       },
       (error) => {
         handleFirestoreError(error, OperationType.LIST, 'posts');
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  // 3b. Real-time listener for Analyst Directory (users collection + comments authors) so all users are searchable
+  useEffect(() => {
+    const usersQuery = query(collection(db, 'users'), limit(250));
+    const unsubscribe = onSnapshot(
+      usersQuery,
+      (snapshot) => {
+        const profiles = snapshot.docs.map((docSnap) => {
+          const data = docSnap.data() as UserProfileData;
+          const uid = data.uid || docSnap.id;
+          const cleanStoredName = (data.displayName || '')
+            .replace(/\s*\((?:Your\s+)?6-Digit\s+OTP:\s*\d+\)/gi, '')
+            .trim();
+          const emailFallback = data.email
+            ? data.email
+                .split('@')[0]
+                .replace(/[._-]+/g, ' ')
+                .replace(/\b\w/g, (c) => c.toUpperCase())
+            : '';
+          const displayName = cleanStoredName || emailFallback || 'Analyst';
+          const handle = data.handle
+            ? data.handle.startsWith('@')
+              ? data.handle
+              : `@${data.handle}`
+            : `@${displayName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20) || 'analyst'}`;
+
+          return {
+            ...data,
+            uid,
+            displayName,
+            handle,
+            photoURL: resolveUserAvatarUrl(data.photoURL, displayName, uid),
+          };
+        });
+        setDirectoryUsers(profiles);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'users');
       }
     );
 
@@ -616,11 +701,19 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const path = `users/${currentUser.uid}`;
     try {
       const updated = {
+        uid: currentUser.uid,
         ...details,
         updatedAt: new Date().toISOString(),
       };
       await setDoc(doc(db, 'users', currentUser.uid), updated, { merge: true });
       setUserProfile((prev) => (prev ? { ...prev, ...updated } : null));
+      setDirectoryUsers((prev) => {
+        const exists = prev.some((u) => u.uid === currentUser.uid);
+        if (exists) {
+          return prev.map((u) => (u.uid === currentUser.uid ? { ...u, ...updated } : u));
+        }
+        return userProfile ? [...prev, { ...userProfile, ...updated }] : prev;
+      });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
     }
@@ -1263,6 +1356,7 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         addComment,
         getComments,
         deleteComment,
+        directoryUsers,
         getPublicProfile,
         notifications,
         markNotificationRead,

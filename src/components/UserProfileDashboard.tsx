@@ -468,6 +468,7 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
                       setActiveMessagePartner(targetPartner);
                       if (currentUser) setViewedUserId(currentUser.uid);
                       setDashboardTab('messages');
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
                     }}
                     className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-xs font-bold text-black transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
                   >
