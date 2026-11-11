@@ -1679,6 +1679,125 @@ app.post('/api/auth/check-verification', async (req: Request, res: Response) => 
   }
 });
 
+app.post('/api/auth/ensure-password-provider', async (req: Request, res: Response) => {
+  try {
+    const idToken = String(req.body?.idToken || '').trim();
+    if (!idToken || !FIREBASE_WEB_API_KEY) {
+      return res.status(400).json({ linked: false });
+    }
+
+    const lookResp = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${FIREBASE_WEB_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      }
+    );
+
+    if (!lookResp.ok) {
+      return res.json({ linked: false });
+    }
+
+    const lookData = await lookResp.json().catch(() => ({}));
+    const userInfo = lookData?.users?.[0];
+    const providers: any[] = Array.isArray(userInfo?.providerUserInfo)
+      ? userInfo.providerUserInfo
+      : [];
+    const hasPasswordProvider = providers.some((p) => p?.providerId === 'password');
+
+    if (!hasPasswordProvider) {
+      const generatedPassword = `Tn#${crypto.randomBytes(9).toString('hex')}!9a`;
+      const updResp = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:update?key=${FIREBASE_WEB_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            idToken,
+            password: generatedPassword,
+            returnSecureToken: true,
+          }),
+        }
+      );
+      if (updResp.ok) {
+        return res.json({ linked: true, email: userInfo?.email || '' });
+      }
+    }
+
+    return res.json({ linked: hasPasswordProvider, email: userInfo?.email || '' });
+  } catch (err) {
+    console.warn('Ensure password provider warning:', err);
+    return res.json({ linked: false });
+  }
+});
+
+app.post('/api/auth/reset-password', async (req: Request, res: Response) => {
+  try {
+    const rawEmail = String(req.body?.email || '').trim().toLowerCase();
+
+    if (!rawEmail || !STRICT_EMAIL_REGEX.test(rawEmail)) {
+      return res.status(400).json({
+        error: 'Please enter a valid email address (e.g., name@domain.com).',
+      });
+    }
+
+    if (!FIREBASE_WEB_API_KEY) {
+      return res.status(500).json({ error: 'Authentication service is not configured.' });
+    }
+
+    // Dispatch the official Password Reset email via Firebase Identity Toolkit
+    const oobResp = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_WEB_API_KEY}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Firebase-Locale': 'en',
+          ...(firebaseAppletConfig.appId ? { 'X-Firebase-GMPID': firebaseAppletConfig.appId } : {}),
+        },
+        body: JSON.stringify({
+          requestType: 'PASSWORD_RESET',
+          email: rawEmail,
+        }),
+      }
+    );
+
+    if (!oobResp.ok) {
+      const errJson = await oobResp.json().catch(() => ({}));
+      const rawMsg = String(errJson?.error?.message || '').toUpperCase();
+      if (rawMsg.includes('EMAIL_NOT_FOUND') || rawMsg.includes('USER_NOT_FOUND')) {
+        return res.status(404).json({
+          error: 'No account found with this email address. Please check your email or sign up.',
+        });
+      }
+      if (rawMsg.includes('INVALID_EMAIL')) {
+        return res.status(400).json({
+          error: 'Please enter a valid email address.',
+        });
+      }
+      if (rawMsg.includes('TOO_MANY_ATTEMPTS_TRY_LATER') || rawMsg.includes('RESET_PASSWORD_EXCEED_LIMIT')) {
+        return res.status(429).json({
+          error: 'Too many password reset requests. Please wait a few minutes and try again.',
+        });
+      }
+      return res.status(400).json({
+        error: 'Unable to send password reset email. Please check the email address and try again.',
+      });
+    }
+
+    return res.json({
+      success: true,
+      email: rawEmail,
+    });
+  } catch (error) {
+    console.error('Password reset error:', error);
+    return res.status(500).json({
+      error: 'Failed to send password reset link. Please try again.',
+    });
+  }
+});
+
 // Multi-turn Gemini Chatbot Endpoint
 interface ChatHistoryTurn {
   role: 'user' | 'model';

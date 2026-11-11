@@ -26,6 +26,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     verifyFirebaseEmailLink,
     resendEmailOtp,
     cancelPendingOtp,
+    resetPassword,
     signOutUser,
   } = useFirebase();
   const [isLoading, setIsLoading] = useState(false);
@@ -125,6 +126,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     await cancelPendingOtp();
   };
 
+  const handleResetPassword = async (email: string) => {
+    setIsLoading(true);
+    setAuthError(null);
+    try {
+      await resetPassword(email);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const modalContent = (
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-xl animate-in fade-in duration-200 overflow-y-auto"
@@ -219,6 +230,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             onCheckFirebaseLink={handleCheckFirebaseLink}
             onResendOtp={handleResendOtp}
             onCancelOtp={handleCancelOtp}
+            onResetPassword={handleResetPassword}
+            onClearError={() => setAuthError(null)}
             isLoading={isLoading}
             errorMessage={authError}
             className="min-h-[540px]"

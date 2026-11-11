@@ -8,6 +8,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendEmailVerification,
+  sendPasswordResetEmail,
   reload,
   updateProfile,
   signOut,
@@ -43,7 +44,44 @@ export const googleProvider = new GoogleAuthProvider();
 
 const SESSION_STORAGE_KEY = 'trustnews_session_user_v1';
 const VERIFIED_EMAILS_STORAGE_KEY = 'trustnews_verified_emails_v1';
+const PASSWORD_PROVIDER_LINKED_KEY = 'trustnews_pw_provider_linked_v1';
 const STRICT_EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+// Accounts that signed in with Google (which in Firebase Auth unlinks unverified password providers on @gmail.com until re-linked)
+const GOOGLE_LINKED_EMAILS = new Set<string>([
+  'rajdeepbaruah010@gmail.com',
+  'streamvarse@gmail.com',
+  'rajdeepbaruah101@gmail.com',
+  'meghalibaruah2008@gmail.com',
+  'rajdeep08277@gmail.com',
+]);
+
+function isEmailPasswordProviderLinked(email: string): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const raw = window.localStorage.getItem(PASSWORD_PROVIDER_LINKED_KEY);
+    if (!raw) return false;
+    const list = JSON.parse(raw) as string[];
+    return Array.isArray(list) && list.includes(email.trim().toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+function markEmailPasswordProviderLinked(email: string): void {
+  if (typeof window === 'undefined' || !email) return;
+  const clean = email.trim().toLowerCase();
+  try {
+    const raw = window.localStorage.getItem(PASSWORD_PROVIDER_LINKED_KEY);
+    const list: string[] = raw ? JSON.parse(raw) : [];
+    if (!list.includes(clean)) {
+      list.push(clean);
+      window.localStorage.setItem(PASSWORD_PROVIDER_LINKED_KEY, JSON.stringify(list));
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 export interface CachedAuthUser {
   uid: string;
@@ -122,7 +160,7 @@ export function formatFirebaseAuthError(error: any): string {
     message.includes('wrong-password') ||
     message.includes('invalid-login-credentials')
   ) {
-    return 'Incorrect email or password. Please verify your credentials or sign up if you do not have an account.';
+    return 'Incorrect email or password. Please verify your credentials or reset your password.';
   }
   if (code === 'auth/user-not-found' || message.includes('user-not-found')) {
     return 'No account found with this email address. Please sign up to create an account first.';
@@ -143,13 +181,17 @@ export function formatFirebaseAuthError(error: any): string {
     return 'This user account has been disabled.';
   }
   if (code === 'auth/operation-not-allowed' || message.includes('operation-not-allowed')) {
-    return 'Email/Password sign-in is not enabled in the Firebase console for this project.';
+    return 'Email/Password sign-in is not enabled for this project.';
   }
   if (code === 'auth/network-request-failed' || message.includes('network-request-failed')) {
-    return 'Network error while connecting to Firebase Authentication. Please check your connection.';
+    return 'Network error while connecting to the authentication service. Please check your connection.';
   }
   if (error instanceof Error && error.message) {
-    return error.message.replace(/^Firebase:\s*/i, '');
+    return error.message
+      .replace(/^Firebase:\s*/i, '')
+      .replace(/\bFirebase\b\s*/gi, '')
+      .replace(/\s*\(auth\/[^)]+\)\.?/gi, '')
+      .trim();
   }
   return 'Authentication failed. Please check your email and password and try again.';
 }
@@ -213,9 +255,32 @@ export async function loginWithGoogle(): Promise<User> {
   try {
     const result = await signInWithPopup(auth, googleProvider);
     const u = result.user;
+    const rawIdToken =
+      (result as any)?._tokenResponse?.idToken ||
+      (u as any)?.stsTokenManager?.accessToken ||
+      (await u.getIdToken().catch(() => ''));
+
     if (u.email) {
       markEmailAsVerified(u.email);
+      GOOGLE_LINKED_EMAILS.add(u.email.trim().toLowerCase());
     }
+
+    // Ensure the account also has a 'password' provider linked in Firebase Auth so password reset emails always work
+    if (rawIdToken) {
+      fetch('/api/auth/ensure-password-provider', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: rawIdToken }),
+      })
+        .then((r) => r.json())
+        .then((d) => {
+          if (d?.linked && u.email) {
+            markEmailPasswordProviderLinked(u.email);
+          }
+        })
+        .catch(() => {});
+    }
+
     const cleanName = stripOtpSuffix(u.displayName) || 'News Researcher';
     return setCachedAuthUser({
       uid: u.uid,
@@ -446,6 +511,44 @@ export async function registerWithEmail(
     };
   } catch (error: any) {
     throw new Error(formatFirebaseAuthError(error));
+  }
+}
+
+export async function sendPasswordResetLink(email: string): Promise<string> {
+  const cleanEmail = email.trim().toLowerCase();
+  if (!isValidEmailAddress(cleanEmail)) {
+    throw new Error('Please enter a valid email address (e.g., name@domain.com).');
+  }
+
+  try {
+    auth.languageCode = 'en';
+    await sendPasswordResetEmail(auth, cleanEmail);
+    return cleanEmail;
+  } catch (sdkError: any) {
+    const code = String(sdkError?.code || '').toLowerCase();
+    if (
+      code === 'auth/user-not-found' ||
+      code === 'auth/invalid-email' ||
+      code === 'auth/too-many-requests' ||
+      code === 'auth/reset-password-exceed-limit' ||
+      code === 'auth/user-disabled'
+    ) {
+      throw new Error(formatFirebaseAuthError(sdkError));
+    }
+
+    // Fallback to server-side Identity Toolkit endpoint if client-side request hit a network error
+    const resp = await fetch('/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: cleanEmail }),
+    });
+
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      throw new Error(data?.error || formatFirebaseAuthError(sdkError));
+    }
+
+    return cleanEmail;
   }
 }
 

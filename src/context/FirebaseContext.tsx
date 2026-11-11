@@ -22,6 +22,7 @@ import {
   requestEmailOtp,
   verifyEmailOtpCode,
   checkFirebaseEmailLinkVerified,
+  sendPasswordResetLink,
   logoutUser,
   handleFirestoreError,
   OperationType,
@@ -62,6 +63,7 @@ interface FirebaseContextType {
   verifyFirebaseEmailLink: () => Promise<boolean>;
   resendEmailOtp: () => Promise<OtpDispatchResponse>;
   cancelPendingOtp: () => Promise<void>;
+  resetPassword: (email: string) => Promise<string>;
   signOutUser: () => Promise<void>;
   updateProfileDetails: (details: Partial<UserProfileData>) => Promise<void>;
   updatePreferences: (preferences: Partial<UserPreferencesConfig>) => Promise<void>;
@@ -682,6 +684,10 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     awaitingOtpRef.current = false;
     setPendingOtpSession(null);
     await logoutUser();
+  };
+
+  const resetPassword = async (email: string): Promise<string> => {
+    return await sendPasswordResetLink(email);
   };
 
   const signOutUser = async () => {
@@ -1336,6 +1342,7 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         verifyFirebaseEmailLink,
         resendEmailOtp,
         cancelPendingOtp,
+        resetPassword,
         signOutUser,
         updateProfileDetails,
         updatePreferences,

@@ -99,6 +99,7 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
     verifyFirebaseEmailLink,
     resendEmailOtp,
     cancelPendingOtp,
+    resetPassword,
     updateProfileDetails,
     updatePreferences,
     saveCustomWeights,
@@ -349,6 +350,16 @@ export const UserProfileDashboard: React.FC<UserProfileDashboardProps> = ({
               setAuthErrorMsg(null);
               await cancelPendingOtp();
             }}
+            onResetPassword={async (email) => {
+              setIsAuthBusy(true);
+              setAuthErrorMsg(null);
+              try {
+                await resetPassword(email);
+              } finally {
+                setIsAuthBusy(false);
+              }
+            }}
+            onClearError={() => setAuthErrorMsg(null)}
             isLoading={isAuthBusy}
             errorMessage={authErrorMsg}
           />

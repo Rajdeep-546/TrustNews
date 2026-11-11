@@ -9,6 +9,7 @@ import {
   MessageCircle,
   Trash2,
   UserPlus,
+  Plus,
   Sparkles,
   UserCheck,
 } from 'lucide-react';
@@ -52,16 +53,62 @@ export const PrivateMessengerView: React.FC<PrivateMessengerViewProps> = ({
   );
   const [messageInput, setMessageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [listFilter, setListFilter] = useState<'all' | 'messages' | 'unread'>('all');
+  const [newChatSearchQuery, setNewChatSearchQuery] = useState('');
+  const [isNewChatOpen, setIsNewChatOpen] = useState(false);
+  const [listFilter, setListFilter] = useState<'all' | 'unread'>('all');
   const [isSending, setIsSending] = useState(false);
   const [mobileShowChat, setMobileShowChat] = useState<boolean>(Boolean(initialPartner));
   const [hydratedProfiles, setHydratedProfiles] = useState<Record<string, ChatPartner>>({});
+  const [addedPartnerUids, setAddedPartnerUids] = useState<string[]>(() =>
+    initialPartner?.uid ? [initialPartner.uid] : []
+  );
+
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
+  const newChatSearchInputRef = useRef<HTMLInputElement>(null);
   const hasAutoSelectedRef = useRef<boolean>(Boolean(initialPartner));
   const lastInitialPartnerUidRef = useRef<string | null>(initialPartner?.uid || null);
 
   useOverlayBackHandler(mobileShowChat, () => setMobileShowChat(false), 'mobile-chat-thread');
+  useOverlayBackHandler(isNewChatOpen, () => setIsNewChatOpen(false), 'new-chat-drawer');
+
+  // Load persisted added chat UIDs for currentUser from localStorage
+  useEffect(() => {
+    if (!currentUser?.uid || typeof window === 'undefined') return;
+    try {
+      const storageKey = `trustnews_added_chat_users_${currentUser.uid}`;
+      const raw = window.localStorage.getItem(storageKey);
+      const parsed: string[] = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) {
+        setAddedPartnerUids((prev) => {
+          const merged = new Set([...prev, ...parsed]);
+          if (initialPartner?.uid) merged.add(initialPartner.uid);
+          return Array.from(merged);
+        });
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }, [currentUser?.uid, initialPartner?.uid]);
+
+  const addPartnerToMessagesList = (uid: string) => {
+    if (!uid) return;
+    setAddedPartnerUids((prev) => {
+      if (prev.includes(uid)) return prev;
+      const next = [uid, ...prev];
+      if (currentUser?.uid && typeof window !== 'undefined') {
+        try {
+          window.localStorage.setItem(
+            `trustnews_added_chat_users_${currentUser.uid}`,
+            JSON.stringify(next)
+          );
+        } catch {
+          // Ignore storage errors
+        }
+      }
+      return next;
+    });
+  };
 
   const cleanDisplayName = (rawName: string | undefined | null, fallback = 'Analyst'): string => {
     if (!rawName) return fallback;
@@ -86,16 +133,34 @@ export const PrivateMessengerView: React.FC<PrivateMessengerViewProps> = ({
     if (initialPartner && initialPartner.uid !== lastInitialPartnerUidRef.current) {
       lastInitialPartnerUidRef.current = initialPartner.uid;
       hasAutoSelectedRef.current = true;
+      addPartnerToMessagesList(initialPartner.uid);
       setSelectedPartner(initialPartner);
+      setIsNewChatOpen(false);
       setMobileShowChat(true);
+    } else if (initialPartner?.uid) {
+      addPartnerToMessagesList(initialPartner.uid);
     }
   }, [initialPartner]);
+
+  // Focus search input when opening the "+" New Chat panel
+  useEffect(() => {
+    if (isNewChatOpen) {
+      setTimeout(() => {
+        newChatSearchInputRef.current?.focus({ preventScroll: true });
+      }, 40);
+    } else {
+      setNewChatSearchQuery('');
+    }
+  }, [isNewChatOpen]);
 
   // Hydrate latest public profiles from Firestore users/{uid} for any UID seen in messages, posts, or notifications
   useEffect(() => {
     if (!currentUser) return;
     const candidateUids = new Set<string>();
     if (initialPartner?.uid) candidateUids.add(initialPartner.uid);
+    for (const uid of addedPartnerUids) {
+      if (uid) candidateUids.add(uid);
+    }
     for (const msg of privateMessages) {
       if (msg.senderId) candidateUids.add(msg.senderId);
       if (msg.recipientId) candidateUids.add(msg.recipientId);
@@ -146,6 +211,7 @@ export const PrivateMessengerView: React.FC<PrivateMessengerViewProps> = ({
     wirePosts,
     notifications,
     initialPartner,
+    addedPartnerUids,
     directoryUsers,
     hydratedProfiles,
     getPublicProfile,
@@ -355,20 +421,48 @@ export const PrivateMessengerView: React.FC<PrivateMessengerViewProps> = ({
     return counts;
   }, [contactsAndConversations]);
 
-  // Initial auto-select ONLY once on mount when no partner is selected yet.
-  // Never override when the user clicks a contact in the search bar or directory!
+  // Users that belong to the main Messages section (existing message thread OR added by clicking a user in the + New Chat list / profile)
+  const addedUidSet = useMemo(() => new Set(addedPartnerUids), [addedPartnerUids]);
+
+  const myChatList = useMemo(() => {
+    const list = contactsAndConversations.filter(
+      (item) =>
+        Boolean(item.lastMessage) ||
+        addedUidSet.has(item.partner.uid) ||
+        item.partner.uid === selectedPartner?.uid
+    );
+    // Sort so newly added / selected partner or most recent message is ordered cleanly
+    return list.sort((a, b) => {
+      if (a.lastMessage && b.lastMessage) {
+        return (
+          new Date(b.lastMessage.createdAt).getTime() -
+          new Date(a.lastMessage.createdAt).getTime()
+        );
+      }
+      if (a.lastMessage) return -1;
+      if (b.lastMessage) return 1;
+      const idxA = addedPartnerUids.indexOf(a.partner.uid);
+      const idxB = addedPartnerUids.indexOf(b.partner.uid);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.partner.displayName.localeCompare(b.partner.displayName);
+    });
+  }, [contactsAndConversations, addedUidSet, addedPartnerUids, selectedPartner?.uid]);
+
+  // Initial auto-select ONLY from existing active chats on mount when no partner is selected yet
   useEffect(() => {
     if (contactsAndConversations.length === 0) return;
 
     if (!selectedPartner && !hasAutoSelectedRef.current) {
-      hasAutoSelectedRef.current = true;
-      const firstOtherWithMsg = contactsAndConversations.find(
+      const firstOtherWithMsg = myChatList.find(
         (c) => Boolean(c.lastMessage) && c.partner.uid !== currentUser?.uid
       );
-      const firstWithMsg = contactsAndConversations.find((c) => Boolean(c.lastMessage));
-      const firstOther = contactsAndConversations.find((c) => c.partner.uid !== currentUser?.uid);
-      const chosen = firstOtherWithMsg || firstWithMsg || firstOther || contactsAndConversations[0];
+      const firstWithMsg = myChatList.find((c) => Boolean(c.lastMessage));
+      const firstAdded = myChatList[0];
+      const chosen = firstOtherWithMsg || firstWithMsg || firstAdded;
       if (chosen) {
+        hasAutoSelectedRef.current = true;
         setSelectedPartner(chosen.partner);
       }
       return;
@@ -388,15 +482,20 @@ export const PrivateMessengerView: React.FC<PrivateMessengerViewProps> = ({
         setSelectedPartner(updatedSelected.partner);
       }
     }
-  }, [contactsAndConversations, selectedPartner, currentUser?.uid]);
+  }, [contactsAndConversations, myChatList, selectedPartner, currentUser?.uid]);
 
-  // Handler when user clicks any contact in the search bar or contact list
+  // Handler when user clicks a contact in the main Messages list or in the "+" New Chat directory
   const handleSelectContact = (partner: ChatPartner) => {
     hasAutoSelectedRef.current = true;
+    addPartnerToMessagesList(partner.uid);
     setSelectedPartner(partner);
+    setIsNewChatOpen(false);
     setMobileShowChat(true);
     if (searchQuery.trim()) {
       setSearchQuery('');
+    }
+    if (newChatSearchQuery.trim()) {
+      setNewChatSearchQuery('');
     }
     setTimeout(() => {
       messageInputRef.current?.focus({ preventScroll: true });
@@ -472,22 +571,20 @@ export const PrivateMessengerView: React.FC<PrivateMessengerViewProps> = ({
     try {
       const text = messageInput.trim();
       setMessageInput('');
+      addPartnerToMessagesList(selectedPartner.uid);
       await sendDirectMessage(selectedPartner, text);
     } finally {
       setIsSending(false);
     }
   };
 
-  const activeChatsCount = contactsAndConversations.filter((c) => Boolean(c.lastMessage)).length;
-  const totalUnreadChats = contactsAndConversations.filter((c) => c.unreadCount > 0).length;
+  const totalUnreadChats = myChatList.filter((c) => c.unreadCount > 0).length;
+  const isSearchingChats = searchQuery.trim().length > 0;
 
-  const isSearching = searchQuery.trim().length > 0;
-
-  const filteredContacts = useMemo(() => {
-    return contactsAndConversations.filter(({ partner, lastMessage, unreadCount }) => {
-      // When actively searching by @username or name, search across ALL users regardless of tab filter
-      if (!isSearching) {
-        if (listFilter === 'messages' && !lastMessage) return false;
+  // Filtered list for the main Messages section (only added/messaged users)
+  const filteredMyChats = useMemo(() => {
+    return myChatList.filter(({ partner, lastMessage, unreadCount }) => {
+      if (!isSearchingChats) {
         if (listFilter === 'unread' && unreadCount === 0) return false;
         return true;
       }
@@ -509,7 +606,31 @@ export const PrivateMessengerView: React.FC<PrivateMessengerViewProps> = ({
         (lastMessage?.content || '').toLowerCase().includes(rawQ)
       );
     });
-  }, [contactsAndConversations, isSearching, listFilter, searchQuery]);
+  }, [myChatList, isSearchingChats, listFilter, searchQuery]);
+
+  // Filtered list for the WhatsApp-style "+" New Chat drawer (shows ALL users and searches all users)
+  const filteredDirectoryUsers = useMemo(() => {
+    const rawQ = newChatSearchQuery.trim().toLowerCase();
+    if (!rawQ) return contactsAndConversations;
+
+    const cleanQ = rawQ.replace(/^@+/, '');
+    return contactsAndConversations.filter(({ partner, lastMessage }) => {
+      const handleLower = (partner.handle || '').toLowerCase();
+      const handleClean = handleLower.replace(/^@+/, '');
+      const nameLower = (partner.displayName || '').toLowerCase();
+      const baseNameLower = nameLower.replace(/\s*\(you\)$/i, '').trim();
+      const uidLower = (partner.uid || '').toLowerCase();
+
+      return (
+        handleLower.includes(rawQ) ||
+        (cleanQ.length > 0 && handleClean.includes(cleanQ)) ||
+        nameLower.includes(rawQ) ||
+        (cleanQ.length > 0 && baseNameLower.includes(cleanQ)) ||
+        uidLower.includes(rawQ) ||
+        (lastMessage?.content || '').toLowerCase().includes(rawQ)
+      );
+    });
+  }, [contactsAndConversations, newChatSearchQuery]);
 
   if (!currentUser) {
     return (
@@ -543,264 +664,409 @@ export const PrivateMessengerView: React.FC<PrivateMessengerViewProps> = ({
 
   return (
     <div className="border border-neutral-800 bg-neutral-950/95 rounded-2xl overflow-hidden shadow-2xl flex flex-col md:flex-row h-[580px] sm:h-[640px]">
-      {/* LEFT PANE: Conversations & Contacts List */}
+      {/* LEFT PANE: Clean Messages Section OR WhatsApp-Style "+" New Chat Directory */}
       <div
-        className={`w-full md:w-80 lg:w-88 border-r border-neutral-800/90 flex flex-col bg-neutral-950 ${
+        className={`relative w-full md:w-80 lg:w-88 border-r border-neutral-800/90 flex flex-col bg-neutral-950 ${
           mobileShowChat ? 'hidden md:flex' : 'flex h-full'
         }`}
       >
-        {/* Left Header */}
-        <div className="p-3.5 sm:p-4 border-b border-neutral-800/90 bg-neutral-900/50 space-y-2.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-                <MessageCircle className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-white leading-tight">
-                  Private Chats
-                </h3>
-                <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-1">
-                  <Lock className="w-2.5 h-2.5" /> End-to-End Private
-                </span>
-              </div>
-            </div>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-semibold">
-              {contactsAndConversations.length} Users
-            </span>
-          </div>
-
-          {/* Search Contacts / Analysts by @username or Name */}
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-3 top-2.5" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search user by @username or name..."
-              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl pl-8 pr-7 py-1.5 text-xs text-white placeholder-neutral-500 focus:outline-hidden focus:border-emerald-500/50 font-sans"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-2 text-neutral-400 hover:text-white text-xs font-mono cursor-pointer"
-                title="Clear search"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-
-          {/* Filter Pills: All / Messages / Unread */}
-          <div className="flex items-center gap-1.5 pt-0.5">
-            <button
-              type="button"
-              onClick={() => setListFilter('all')}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
-                listFilter === 'all' && !isSearching
-                  ? 'bg-emerald-500 text-black'
-                  : 'bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800'
-              }`}
-            >
-              All ({contactsAndConversations.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setSearchQuery('');
-                setListFilter('messages');
-              }}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
-                listFilter === 'messages' && !isSearching
-                  ? 'bg-emerald-500 text-black'
-                  : 'bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800'
-              }`}
-            >
-              Active Chats ({activeChatsCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setSearchQuery('');
-                setListFilter('unread');
-              }}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
-                listFilter === 'unread' && !isSearching
-                  ? 'bg-emerald-500 text-black'
-                  : 'bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800'
-              }`}
-            >
-              Unread ({totalUnreadChats})
-            </button>
-          </div>
-        </div>
-
-        {/* Conversations & Search Results Scroll List */}
-        <div className="flex-1 overflow-y-auto divide-y divide-neutral-900 scrollbar-none">
-          {filteredContacts.length === 0 ? (
-            <div className="p-6 text-center space-y-2">
-              <UserPlus className="w-6 h-6 text-neutral-600 mx-auto" />
-              <p className="text-xs font-medium text-neutral-400">
-                {isSearching
-                  ? `No users found matching "${searchQuery}"`
-                  : listFilter === 'messages'
-                  ? 'No active message threads yet'
-                  : listFilter === 'unread'
-                  ? 'No unread messages'
-                  : 'No contacts found'}
-              </p>
-              <p className="text-[11px] text-neutral-500">
-                {isSearching
-                  ? 'Try searching by their profile name or @handle.'
-                  : listFilter !== 'all'
-                  ? 'Switch to "All" to pick an analyst and send a private message.'
-                  : 'Visit the Social Wire and click "Message" on any post author to start a private conversation.'}
-              </p>
-              {(listFilter !== 'all' || isSearching) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchQuery('');
-                    setListFilter('all');
-                  }}
-                  className="mt-2 px-3 py-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-xs font-semibold text-emerald-400 cursor-pointer"
-                >
-                  Show All Users ({contactsAndConversations.length})
-                </button>
-              )}
-            </div>
-          ) : (
-            filteredContacts.map(({ partner, lastMessage, unreadCount, messageCount }, idx) => {
-              const isSelected = selectedPartner?.uid === partner.uid;
-              const isOutgoingLast = lastMessage?.senderId === currentUser.uid;
-              const prevHasMessage = idx > 0 ? Boolean(filteredContacts[idx - 1].lastMessage) : false;
-              const showSearchHeader = isSearching && idx === 0;
-              const showActiveHeader = !isSearching && idx === 0 && Boolean(lastMessage);
-              const showDirectoryHeader = !isSearching && !lastMessage && (idx === 0 || prevHasMessage);
-
-              const baseNameKey = partner.displayName.replace(/\s*\(You\)$/i, '').trim().toLowerCase();
-              const hasSameNameDuplicate = (duplicateNameCounts.get(baseNameKey) || 0) > 1;
-
-              return (
-                <React.Fragment key={partner.uid}>
-                  {showSearchHeader && (
-                    <div className="px-3.5 py-1.5 bg-emerald-950/25 border-b border-neutral-900 flex items-center justify-between">
-                      <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-400 font-bold">
-                        Matching Users ({filteredContacts.length}) • Click to Open Chat
-                      </span>
-                    </div>
-                  )}
-                  {showActiveHeader && (
-                    <div className="px-3.5 py-1.5 bg-emerald-950/20 border-b border-neutral-900 flex items-center justify-between">
-                      <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-400 font-bold">
-                        Active Private Messages ({activeChatsCount})
-                      </span>
-                    </div>
-                  )}
-                  {showDirectoryHeader && (
-                    <div className="px-3.5 py-1.5 bg-neutral-900/40 border-b border-neutral-900 flex items-center justify-between">
-                      <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-500 font-semibold">
-                        Analyst Directory • Start New Chat
-                      </span>
-                    </div>
-                  )}
+        {isNewChatOpen ? (
+          /* WHATSAPP-STYLE "+" NEW CHAT VIEW: Shows ALL users + Search to pick a new user */
+          <div className="flex flex-col h-full bg-neutral-950 animate-in fade-in duration-150">
+            {/* New Chat Header */}
+            <div className="p-3.5 sm:p-4 border-b border-neutral-800/90 bg-emerald-950/25 space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
                   <button
                     type="button"
-                    onClick={() => handleSelectContact(partner)}
-                    className={`w-full p-3.5 text-left transition-all flex items-center gap-3 cursor-pointer ${
-                      isSelected
-                        ? 'bg-emerald-950/30 border-l-2 border-l-emerald-400'
-                        : lastMessage
-                        ? 'bg-neutral-950 hover:bg-neutral-900/80'
-                        : 'hover:bg-neutral-900/60'
+                    onClick={() => setIsNewChatOpen(false)}
+                    className="p-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-white transition-colors cursor-pointer"
+                    title="Back to Messages"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </button>
+                  <div>
+                    <h3 className="text-sm font-bold text-white leading-tight">
+                      New Chat
+                    </h3>
+                    <span className="text-[10px] font-mono text-emerald-400">
+                      Select a user to add to Messages
+                    </span>
+                  </div>
+                </div>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-semibold">
+                  {contactsAndConversations.length} Users
+                </span>
+              </div>
+
+              {/* Search All Users by @username or Name */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-emerald-400 absolute left-3 top-2.5" />
+                <input
+                  ref={newChatSearchInputRef}
+                  type="text"
+                  value={newChatSearchQuery}
+                  onChange={(e) => setNewChatSearchQuery(e.target.value)}
+                  placeholder="Search new user by @username or name..."
+                  className="w-full bg-neutral-900 border border-emerald-500/40 rounded-xl pl-8 pr-7 py-1.5 text-xs text-white placeholder-neutral-500 focus:outline-hidden focus:border-emerald-400 font-sans"
+                />
+                {newChatSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setNewChatSearchQuery('')}
+                    className="absolute right-2.5 top-2 text-neutral-400 hover:text-white text-xs font-mono cursor-pointer"
+                    title="Clear search"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* All Users Directory List */}
+            <div className="flex-1 overflow-y-auto divide-y divide-neutral-900 scrollbar-none">
+              <div className="px-3.5 py-1.5 bg-neutral-900/50 border-b border-neutral-900 flex items-center justify-between">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-400 font-bold">
+                  {newChatSearchQuery.trim()
+                    ? `Matching Users (${filteredDirectoryUsers.length})`
+                    : `All Registered Users (${filteredDirectoryUsers.length})`}
+                </span>
+                <span className="text-[10px] font-mono text-neutral-500">
+                  Click to message
+                </span>
+              </div>
+
+              {filteredDirectoryUsers.length === 0 ? (
+                <div className="p-6 text-center space-y-2">
+                  <UserPlus className="w-6 h-6 text-neutral-600 mx-auto" />
+                  <p className="text-xs font-medium text-neutral-400">
+                    No users found matching &ldquo;{newChatSearchQuery}&rdquo;
+                  </p>
+                  <p className="text-[11px] text-neutral-500">
+                    Try searching by their @username or display name.
+                  </p>
+                </div>
+              ) : (
+                filteredDirectoryUsers.map(({ partner, lastMessage }) => {
+                  const isAlreadyInMessages =
+                    Boolean(lastMessage) || addedUidSet.has(partner.uid);
+                  const baseNameKey = partner.displayName
+                    .replace(/\s*\(You\)$/i, '')
+                    .trim()
+                    .toLowerCase();
+                  const hasSameNameDuplicate =
+                    (duplicateNameCounts.get(baseNameKey) || 0) > 1;
+
+                  return (
+                    <button
+                      key={partner.uid}
+                      type="button"
+                      onClick={() => handleSelectContact(partner)}
+                      className="w-full p-3.5 text-left transition-all flex items-center gap-3 hover:bg-emerald-950/20 cursor-pointer"
+                    >
+                      {/* Avatar */}
+                      <div className="relative shrink-0">
+                        <img
+                          src={resolveUserAvatarUrl(
+                            partner.photoURL,
+                            partner.displayName,
+                            partner.uid
+                          )}
+                          alt={partner.displayName}
+                          className="w-10 h-10 rounded-full border border-neutral-700 object-cover"
+                        />
+                        <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-neutral-950" />
+                      </div>
+
+                      {/* User Name & @handle */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-xs font-bold text-white truncate">
+                            {partner.displayName}
+                          </span>
+                          <span
+                            className={`text-[9px] font-mono px-1.5 py-0.5 rounded shrink-0 ${
+                              isAlreadyInMessages
+                                ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                                : 'bg-neutral-900 text-emerald-400 border border-neutral-800'
+                            }`}
+                          >
+                            {isAlreadyInMessages ? 'Open Chat' : '+ Add & Message'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-1 mt-0.5">
+                          <span className="text-[10px] font-mono text-sky-400 truncate">
+                            {partner.handle}
+                            {hasSameNameDuplicate && (
+                              <span className="ml-1.5 text-[9px] text-neutral-500">
+                                • ID: {partner.uid.slice(0, 6)}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        ) : (
+          /* DEFAULT CLEAN MESSAGES VIEW: Only shows active/added chats + WhatsApp-style Plus User icon */
+          <>
+            {/* Left Header */}
+            <div className="p-3.5 sm:p-4 border-b border-neutral-800/90 bg-neutral-900/50 space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                    <MessageCircle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white leading-tight">
+                      Private Chats
+                    </h3>
+                    <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-1">
+                      <Lock className="w-2.5 h-2.5" /> End-to-End Private
+                    </span>
+                  </div>
+                </div>
+
+                {/* WhatsApp-Style Plus User Button to find & add a new user to message */}
+                <button
+                  type="button"
+                  onClick={() => setIsNewChatOpen(true)}
+                  className="px-2.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
+                  title="New Chat — Search and select any user to message"
+                >
+                  <UserPlus className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>New Chat</span>
+                </button>
+              </div>
+
+              {/* Search within your Messages (or click + for all users) */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search your chats or click + New Chat..."
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl pl-8 pr-7 py-1.5 text-xs text-white placeholder-neutral-500 focus:outline-hidden focus:border-emerald-500/50 font-sans"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-2 text-neutral-400 hover:text-white text-xs font-mono cursor-pointer"
+                    title="Clear search"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {/* Filter Pills: Chats / Unread / + Find User */}
+              <div className="flex items-center justify-between gap-1.5 pt-0.5">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setListFilter('all')}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                      listFilter === 'all' && !isSearchingChats
+                        ? 'bg-emerald-500 text-black'
+                        : 'bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800'
                     }`}
                   >
-                    {/* Avatar */}
-                    <div className="relative shrink-0">
-                      <img
-                        src={resolveUserAvatarUrl(partner.photoURL, partner.displayName, partner.uid)}
-                        alt={partner.displayName}
-                        className="w-10 h-10 rounded-full border border-neutral-700 object-cover"
-                      />
-                      <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-neutral-950" />
-                    </div>
-
-                    {/* Name & Preview */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-xs font-bold text-white truncate">
-                          {partner.displayName}
-                        </span>
-                        {lastMessage ? (
-                          <span className="text-[10px] font-mono text-emerald-400/90 shrink-0">
-                            {new Date(lastMessage.createdAt).toLocaleTimeString([], {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </span>
-                        ) : (
-                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-neutral-900 text-emerald-400 border border-emerald-500/30 shrink-0">
-                            Message
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-[10px] font-mono text-sky-400 truncate">
-                          {partner.handle}
-                          {hasSameNameDuplicate && (
-                            <span className="ml-1.5 text-[9px] text-neutral-500">
-                              • ID: {partner.uid.slice(0, 6)}
-                            </span>
-                          )}
-                        </span>
-                        {messageCount > 0 && (
-                          <span className="text-[9px] font-mono text-neutral-500 shrink-0">
-                            {messageCount} {messageCount === 1 ? 'msg' : 'msgs'}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2 mt-1">
-                        <p
-                          className={`text-[11px] truncate ${
-                            unreadCount > 0
-                              ? 'text-white font-semibold'
-                              : lastMessage
-                              ? 'text-neutral-200'
-                              : 'text-neutral-400'
-                          }`}
-                        >
-                          {lastMessage ? (
-                            <>
-                              {isOutgoingLast ? (
-                                <span className="text-emerald-400 mr-1 font-medium">You:</span>
-                              ) : (
-                                <span className="text-sky-400 mr-1 font-medium">Received:</span>
-                              )}
-                              {lastMessage.content}
-                            </>
-                          ) : (
-                            <span className="italic text-neutral-500">
-                              Click to open private chat
-                            </span>
-                          )}
-                        </p>
-
-                        {unreadCount > 0 && (
-                          <span className="px-1.5 py-0.2 min-w-[18px] h-[18px] rounded-full bg-emerald-500 text-black font-mono text-[10px] font-black flex items-center justify-center shrink-0">
-                            {unreadCount}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                    Chats ({myChatList.length})
                   </button>
-                </React.Fragment>
-              );
-            })
-          )}
-        </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setListFilter('unread');
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                      listFilter === 'unread' && !isSearchingChats
+                        ? 'bg-emerald-500 text-black'
+                        : 'bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800'
+                    }`}
+                  >
+                    Unread ({totalUnreadChats})
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsNewChatOpen(true)}
+                  className="px-2 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-[10px] font-mono font-semibold text-emerald-300 flex items-center gap-1 transition-colors cursor-pointer"
+                  title="Browse all users"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>All Users ({contactsAndConversations.length})</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Active / Added Conversations Scroll List */}
+            <div className="flex-1 overflow-y-auto divide-y divide-neutral-900 scrollbar-none pb-16">
+              {filteredMyChats.length === 0 ? (
+                <div className="p-6 text-center space-y-3">
+                  <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto text-emerald-400">
+                    <UserPlus className="w-5 h-5" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold text-white">
+                      {isSearchingChats
+                        ? `No chats matching "${searchQuery}"`
+                        : listFilter === 'unread'
+                        ? 'No unread messages'
+                        : 'No conversations in Messages yet'}
+                    </p>
+                    <p className="text-[11px] text-neutral-400 leading-relaxed">
+                      {isSearchingChats
+                        ? 'Click the + New Chat button below to search across all registered users.'
+                        : 'Click the + user icon to browse all users, search by @username or name, and start a private chat.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (searchQuery.trim()) {
+                        setNewChatSearchQuery(searchQuery.trim());
+                        setSearchQuery('');
+                      }
+                      setIsNewChatOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold transition-colors cursor-pointer shadow-md"
+                  >
+                    <UserPlus className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <span>+ Find User to Message</span>
+                  </button>
+                </div>
+              ) : (
+                filteredMyChats.map(({ partner, lastMessage, unreadCount, messageCount }) => {
+                  const isSelected = selectedPartner?.uid === partner.uid;
+                  const isOutgoingLast = lastMessage?.senderId === currentUser.uid;
+                  const baseNameKey = partner.displayName
+                    .replace(/\s*\(You\)$/i, '')
+                    .trim()
+                    .toLowerCase();
+                  const hasSameNameDuplicate =
+                    (duplicateNameCounts.get(baseNameKey) || 0) > 1;
+
+                  return (
+                    <button
+                      key={partner.uid}
+                      type="button"
+                      onClick={() => handleSelectContact(partner)}
+                      className={`w-full p-3.5 text-left transition-all flex items-center gap-3 cursor-pointer ${
+                        isSelected
+                          ? 'bg-emerald-950/30 border-l-2 border-l-emerald-400'
+                          : 'bg-neutral-950 hover:bg-neutral-900/80'
+                      }`}
+                    >
+                      {/* Avatar */}
+                      <div className="relative shrink-0">
+                        <img
+                          src={resolveUserAvatarUrl(
+                            partner.photoURL,
+                            partner.displayName,
+                            partner.uid
+                          )}
+                          alt={partner.displayName}
+                          className="w-10 h-10 rounded-full border border-neutral-700 object-cover"
+                        />
+                        <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-neutral-950" />
+                      </div>
+
+                      {/* Name & Preview */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-xs font-bold text-white truncate">
+                            {partner.displayName}
+                          </span>
+                          {lastMessage ? (
+                            <span className="text-[10px] font-mono text-emerald-400/90 shrink-0">
+                              {new Date(lastMessage.createdAt).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shrink-0">
+                              Added
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-[10px] font-mono text-sky-400 truncate">
+                            {partner.handle}
+                            {hasSameNameDuplicate && (
+                              <span className="ml-1.5 text-[9px] text-neutral-500">
+                                • ID: {partner.uid.slice(0, 6)}
+                              </span>
+                            )}
+                          </span>
+                          {messageCount > 0 && (
+                            <span className="text-[9px] font-mono text-neutral-500 shrink-0">
+                              {messageCount} {messageCount === 1 ? 'msg' : 'msgs'}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 mt-1">
+                          <p
+                            className={`text-[11px] truncate ${
+                              unreadCount > 0
+                                ? 'text-white font-semibold'
+                                : lastMessage
+                                ? 'text-neutral-200'
+                                : 'text-neutral-400'
+                            }`}
+                          >
+                            {lastMessage ? (
+                              <>
+                                {isOutgoingLast ? (
+                                  <span className="text-emerald-400 mr-1 font-medium">You:</span>
+                                ) : (
+                                  <span className="text-sky-400 mr-1 font-medium">Received:</span>
+                                )}
+                                {lastMessage.content}
+                              </>
+                            ) : (
+                              <span className="italic text-emerald-400/80">
+                                New chat ready • Send a message
+                              </span>
+                            )}
+                          </p>
+
+                          {unreadCount > 0 && (
+                            <span className="px-1.5 py-0.2 min-w-[18px] h-[18px] rounded-full bg-emerald-500 text-black font-mono text-[10px] font-black flex items-center justify-center shrink-0">
+                              {unreadCount}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+
+            {/* WhatsApp-Style Floating "+" User Icon at bottom-right of Left Pane */}
+            <button
+              type="button"
+              onClick={() => setIsNewChatOpen(true)}
+              aria-label="New chat — find user to message"
+              title="New Chat — Search and select any user to message"
+              className="absolute bottom-4 right-4 z-20 w-12 h-12 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black shadow-xl shadow-emerald-950/60 flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-pointer"
+            >
+              <UserPlus className="w-5 h-5 stroke-[2.5]" />
+            </button>
+          </>
+        )}
       </div>
 
       {/* RIGHT PANE: Active WhatsApp-Style Chat Window */}
@@ -851,15 +1117,30 @@ export const PrivateMessengerView: React.FC<PrivateMessengerViewProps> = ({
                 </div>
               </div>
 
-              {onViewProfile && (
+              <div className="flex items-center gap-2 shrink-0">
                 <button
-                  onClick={() => onViewProfile(selectedPartner.uid)}
-                  className="px-2.5 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-[11px] font-medium text-neutral-300 hover:text-white flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                  type="button"
+                  onClick={() => {
+                    setMobileShowChat(false);
+                    setIsNewChatOpen(true);
+                  }}
+                  className="px-2.5 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-[11px] font-semibold text-emerald-300 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Start a new chat with another user"
                 >
-                  <UserCheck className="w-3.5 h-3.5 text-sky-400" />
-                  <span className="hidden sm:inline">View Profile</span>
+                  <UserPlus className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="hidden sm:inline">New Chat</span>
                 </button>
-              )}
+
+                {onViewProfile && (
+                  <button
+                    onClick={() => onViewProfile(selectedPartner.uid)}
+                    className="px-2.5 py-1.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-[11px] font-medium text-neutral-300 hover:text-white flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                  >
+                    <UserCheck className="w-3.5 h-3.5 text-sky-400" />
+                    <span className="hidden sm:inline">View Profile</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Messages Area */}
@@ -987,13 +1268,21 @@ export const PrivateMessengerView: React.FC<PrivateMessengerViewProps> = ({
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-3">
-            <div className="w-12 h-12 rounded-2xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-emerald-400">
-              <MessageCircle className="w-6 h-6" />
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+              <UserPlus className="w-6 h-6" />
             </div>
-            <h4 className="text-sm font-bold text-white">Select an Analyst to Message</h4>
+            <h4 className="text-sm font-bold text-white">Start a Private Conversation</h4>
             <p className="text-xs text-neutral-500 max-w-xs">
-              Choose a contact on the left or click &ldquo;Message&rdquo; on any post in the Social Wire to open a private 1-on-1 chat.
+              Select an existing chat on the left or click the <strong className="text-emerald-400">+ New Chat</strong> icon to browse all users and add someone to your Messages.
             </p>
+            <button
+              type="button"
+              onClick={() => setIsNewChatOpen(true)}
+              className="mt-1 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs transition-colors cursor-pointer shadow-md"
+            >
+              <UserPlus className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>+ Find User to Message</span>
+            </button>
           </div>
         )}
       </div>

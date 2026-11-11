@@ -18,6 +18,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { sendPasswordResetLink } from "@/src/firebase";
 
 const STRICT_EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
@@ -220,16 +221,26 @@ const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
 PasswordInput.displayName = "PasswordInput";
 
 interface SignInFormProps {
+  emailValue: string;
+  onEmailChange: (email: string) => void;
   onSubmitEmail?: (email: string, password: string) => void | Promise<void>;
   onValidationError?: (msg: string) => void;
+  onOpenResetPassword?: () => void;
   isLoading?: boolean;
 }
 
-function SignInForm({ onSubmitEmail, onValidationError, isLoading }: SignInFormProps) {
+function SignInForm({
+  emailValue,
+  onEmailChange,
+  onSubmitEmail,
+  onValidationError,
+  onOpenResetPassword,
+  isLoading,
+}: SignInFormProps) {
   const handleSignIn = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
-    const email = String(formData.get("email") || "").trim().toLowerCase();
+    const email = String(formData.get("email") || emailValue || "").trim().toLowerCase();
     const password = String(formData.get("password") || "");
 
     if (!STRICT_EMAIL_REGEX.test(email)) {
@@ -258,7 +269,7 @@ function SignInForm({ onSubmitEmail, onValidationError, isLoading }: SignInFormP
           Sign in to your account
         </h1>
         <p className="text-balance text-xs text-neutral-400">
-          Verified Firebase Email/Password &amp; 6-Digit OTP Authentication
+          Verified Email/Password &amp; 6-Digit OTP Authentication
         </p>
       </div>
       <div className="grid gap-4">
@@ -268,21 +279,37 @@ function SignInForm({ onSubmitEmail, onValidationError, isLoading }: SignInFormP
             id="email"
             name="email"
             type="email"
+            value={emailValue}
+            onChange={(e) => onEmailChange(e.target.value)}
             placeholder="name@example.com"
             required
             autoComplete="email"
             disabled={isLoading}
           />
         </div>
-        <PasswordInput
-          name="password"
-          label="Password"
-          required
-          minLength={6}
-          autoComplete="current-password"
-          placeholder="Enter your password"
-          disabled={isLoading}
-        />
+        <div className="grid gap-1.5">
+          <PasswordInput
+            name="password"
+            label="Password"
+            required
+            minLength={6}
+            autoComplete="current-password"
+            placeholder="Enter your password"
+            disabled={isLoading}
+          />
+          {onOpenResetPassword && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={onOpenResetPassword}
+                disabled={isLoading}
+                className="text-[11px] font-medium text-neutral-400 hover:text-emerald-400 transition-colors cursor-pointer"
+              >
+                Forgot password? Reset Password
+              </button>
+            </div>
+          )}
+        </div>
         <Button
           type="submit"
           variant="default"
@@ -349,7 +376,7 @@ function SignUpForm({ onSubmitSignUp, onValidationError, isLoading }: SignUpForm
       <div className="flex flex-col items-center gap-1.5 text-center">
         <h1 className="text-2xl font-bold text-white">Create an account</h1>
         <p className="text-balance text-xs text-neutral-400">
-          Register with Firebase Auth &amp; verify your email via 6-digit OTP
+          Register with your email &amp; verify via 6-digit OTP
         </p>
       </div>
       <div className="grid gap-3.5">
@@ -403,6 +430,144 @@ function SignUpForm({ onSubmitSignUp, onValidationError, isLoading }: SignUpForm
         </Button>
       </div>
     </form>
+  );
+}
+
+interface PasswordResetFormProps {
+  initialEmail: string;
+  onSendResetLink?: (email: string) => void | Promise<void>;
+  onResetSuccess: (sentEmail: string) => void;
+  onBackToSignIn: () => void;
+  isLoading?: boolean;
+}
+
+function PasswordResetForm({
+  initialEmail,
+  onSendResetLink,
+  onResetSuccess,
+  onBackToSignIn,
+  isLoading,
+}: PasswordResetFormProps) {
+  const [email, setEmail] = useState(initialEmail || "");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const emailInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (initialEmail && !email) {
+      setEmail(initialEmail);
+    }
+  }, [initialEmail]);
+
+  const executePasswordReset = async () => {
+    if (isSubmitting || isLoading) return;
+    setLocalError(null);
+
+    const rawValue = emailInputRef.current?.value || email || "";
+    const cleanEmail = rawValue.trim().toLowerCase();
+
+    if (!cleanEmail || !STRICT_EMAIL_REGEX.test(cleanEmail)) {
+      setLocalError("Please enter a valid email address (e.g., name@domain.com).");
+      emailInputRef.current?.focus();
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      if (onSendResetLink) {
+        await onSendResetLink(cleanEmail);
+      } else {
+        await sendPasswordResetLink(cleanEmail);
+      }
+      // Immediately return to the Sign In page after sending the reset link
+      onResetSuccess(cleanEmail);
+    } catch (err: any) {
+      setLocalError(err?.message || "Failed to send password reset link. Please check your email.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleResetSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    await executePasswordReset();
+  };
+
+  const busy = isSubmitting || Boolean(isLoading);
+
+  return (
+    <div className="mx-auto grid w-full max-w-[350px] gap-4">
+      <div className="flex flex-col items-center gap-2 text-center">
+        <div className="flex h-11 w-11 items-center justify-center rounded-full border border-emerald-500/40 bg-emerald-950/40 text-emerald-400">
+          <KeyRound className="size-5" />
+        </div>
+        <h1 className="text-xl font-bold text-white">Reset Your Password</h1>
+        <p className="text-xs text-neutral-400 leading-relaxed">
+          Enter your account email address and click the button below to receive your password reset link.
+        </p>
+      </div>
+
+      <form onSubmit={handleResetSubmit} className="grid gap-4" noValidate>
+        <div className="grid gap-2">
+          <Label htmlFor="reset-email">Account Email Address</Label>
+          <Input
+            ref={emailInputRef}
+            id="reset-email"
+            name="reset-email"
+            type="email"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (localError) setLocalError(null);
+            }}
+            placeholder="name@example.com"
+            required
+            autoComplete="email"
+            disabled={busy}
+          />
+        </div>
+
+        {localError && (
+          <div className="rounded-lg border border-rose-500/40 bg-rose-950/30 p-2.5 text-xs text-rose-300 flex items-start gap-2">
+            <AlertCircle className="size-4 text-rose-400 shrink-0 mt-0.5" />
+            <span className="leading-snug">{localError}</span>
+          </div>
+        )}
+
+        <Button
+          type="submit"
+          variant="default"
+          disabled={busy}
+          onClick={(e) => {
+            e.preventDefault();
+            executePasswordReset();
+          }}
+          className="w-full font-semibold cursor-pointer"
+        >
+          {busy ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              <span>Sending Reset Link...</span>
+            </>
+          ) : (
+            <>
+              <MailCheck className="size-4" />
+              <span>Send Password Reset Link</span>
+            </>
+          )}
+        </Button>
+
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onBackToSignIn}
+          className="inline-flex items-center justify-center gap-1.5 text-xs text-neutral-400 hover:text-white transition-colors pt-1 cursor-pointer"
+        >
+          <ArrowLeft className="size-3.5" />
+          <span>Back to Sign In</span>
+        </button>
+      </form>
+    </div>
   );
 }
 
@@ -649,6 +814,8 @@ interface AuthFormContainerProps {
   onCheckFirebaseLink?: () => void | Promise<void>;
   onResendOtp?: () => void | Promise<void>;
   onCancelOtp?: () => void | Promise<void>;
+  onResetPassword?: (email: string) => void | Promise<void>;
+  onClearError?: () => void;
   isLoading?: boolean;
   errorMessage?: string | null;
 }
@@ -664,10 +831,15 @@ function AuthFormContainer({
   onCheckFirebaseLink,
   onResendOtp,
   onCancelOtp,
+  onResetPassword,
+  onClearError,
   isLoading,
   errorMessage,
 }: AuthFormContainerProps) {
   const [localError, setLocalError] = useState<string | null>(null);
+  const [resetSuccessBanner, setResetSuccessBanner] = useState<string | null>(null);
+  const [signInEmail, setSignInEmail] = useState("");
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   useEffect(() => {
     setLocalError(null);
@@ -687,23 +859,61 @@ function AuthFormContainer({
     );
   }
 
+  if (isResettingPassword) {
+    return (
+      <PasswordResetForm
+        initialEmail={signInEmail}
+        onSendResetLink={onResetPassword}
+        onResetSuccess={(sentEmail) => {
+          setSignInEmail(sentEmail);
+          setLocalError(null);
+          onClearError?.();
+          setIsResettingPassword(false);
+          setResetSuccessBanner(
+            `Password reset link sent to ${sentEmail}. Please check your email inbox (and spam folder) to set your new password, then sign in below.`
+          );
+        }}
+        onBackToSignIn={() => {
+          setLocalError(null);
+          onClearError?.();
+          setIsResettingPassword(false);
+        }}
+        isLoading={isLoading}
+      />
+    );
+  }
+
   const displayedError = localError || errorMessage;
 
   return (
     <div className="mx-auto grid w-full max-w-[350px] gap-3">
       {isSignIn ? (
         <SignInForm
+          emailValue={signInEmail}
+          onEmailChange={setSignInEmail}
           onSubmitEmail={(email, password) => {
+            setSignInEmail(email);
             setLocalError(null);
+            setResetSuccessBanner(null);
             return onEmailSignIn?.(email, password);
           }}
-          onValidationError={setLocalError}
+          onValidationError={(msg) => {
+            setResetSuccessBanner(null);
+            setLocalError(msg);
+          }}
+          onOpenResetPassword={() => {
+            setLocalError(null);
+            setResetSuccessBanner(null);
+            onClearError?.();
+            setIsResettingPassword(true);
+          }}
           isLoading={isLoading}
         />
       ) : (
         <SignUpForm
           onSubmitSignUp={(name, email, password) => {
             setLocalError(null);
+            setResetSuccessBanner(null);
             return onEmailSignUp?.(name, email, password);
           }}
           onValidationError={setLocalError}
@@ -711,10 +921,36 @@ function AuthFormContainer({
         />
       )}
 
+      {resetSuccessBanner && !displayedError && isSignIn && (
+        <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/30 p-3 text-xs text-emerald-200 flex items-start gap-2">
+          <CheckCircle2 className="size-4 text-emerald-400 shrink-0 mt-0.5" />
+          <span className="leading-snug">{resetSuccessBanner}</span>
+        </div>
+      )}
+
       {displayedError && (
-        <div className="rounded-lg border border-rose-500/40 bg-rose-950/30 p-2.5 text-xs text-rose-300 flex items-start gap-2">
-          <AlertCircle className="size-4 text-rose-400 shrink-0 mt-0.5" />
-          <span className="leading-snug">{displayedError}</span>
+        <div className="rounded-xl border border-rose-500/40 bg-rose-950/30 p-3 text-xs text-rose-300 space-y-2.5">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="size-4 text-rose-400 shrink-0 mt-0.5" />
+            <span className="leading-snug">{displayedError}</span>
+          </div>
+          {isSignIn && (
+            <div className="pt-0.5 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setLocalError(null);
+                  setResetSuccessBanner(null);
+                  onClearError?.();
+                  setIsResettingPassword(true);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/40 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors cursor-pointer"
+              >
+                <KeyRound className="size-3.5 text-rose-300" />
+                <span>Reset Password</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -726,6 +962,8 @@ function AuthFormContainer({
           className="pl-1 text-white font-semibold"
           onClick={() => {
             setLocalError(null);
+            setResetSuccessBanner(null);
+            onClearError?.();
             onToggle();
           }}
         >
@@ -745,6 +983,7 @@ function AuthFormContainer({
         disabled={isLoading}
         onClick={() => {
           setLocalError(null);
+          setResetSuccessBanner(null);
           if (onGoogleSignIn) {
             onGoogleSignIn();
           }
@@ -789,6 +1028,8 @@ export interface AuthUIProps {
   onCheckFirebaseLink?: () => void | Promise<void>;
   onResendOtp?: () => void | Promise<void>;
   onCancelOtp?: () => void | Promise<void>;
+  onResetPassword?: (email: string) => void | Promise<void>;
+  onClearError?: () => void;
   isLoading?: boolean;
   errorMessage?: string | null;
   className?: string;
@@ -828,6 +1069,8 @@ export function AuthUI({
   onCheckFirebaseLink,
   onResendOtp,
   onCancelOtp,
+  onResetPassword,
+  onClearError,
   isLoading,
   errorMessage,
   className,
@@ -876,6 +1119,8 @@ export function AuthUI({
           onCheckFirebaseLink={onCheckFirebaseLink}
           onResendOtp={onResendOtp}
           onCancelOtp={onCancelOtp}
+          onResetPassword={onResetPassword}
+          onClearError={onClearError}
           isLoading={isLoading}
           errorMessage={errorMessage}
         />
